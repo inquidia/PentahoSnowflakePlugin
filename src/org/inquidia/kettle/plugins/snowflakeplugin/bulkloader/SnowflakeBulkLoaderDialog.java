@@ -56,7 +56,6 @@ import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.row.RowMetaInterface;
-import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.BaseStepMeta;
@@ -74,6 +73,7 @@ import org.pentaho.di.ui.core.widget.TableView;
 import org.pentaho.di.ui.core.widget.TextVar;
 import org.pentaho.di.ui.trans.step.BaseStepDialog;
 
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -83,6 +83,7 @@ import java.util.Set;
 /**
  * @author Inquidia Consulting
  */
+@SuppressWarnings( { "FieldCanBeLocal", "WeakerAccess", "unused" } )
 public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDialogInterface {
   private static Class<?> PKG = SnowflakeBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 
@@ -96,12 +97,6 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.OnError.SkipFile" ),
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.OnError.SkipFilePercent" ),
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.OnError.Abort" ) };
-
-  private static final String[] VALIDATION_MODE_COMBO = new String[] {
-          BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.ValidationMode.Off" ),
-          BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.ValidationMode.ReturnRows" ),
-          BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.ValidationMode.ReturnErrors" ),
-          BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.ValidationMode.ReturnAllErrors" ) };
 
   private static final String[] DATA_TYPE_COMBO = new String[] {
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.DataType.CSV" ),
@@ -163,20 +158,15 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
   private TextVar wErrorLimit;
   private FormData fdlErrorLimit, fdErrorLimit;
 
-  // Size Limit Line
-  private Label wlSizeLimit;
-  private TextVar wSizeLimit;
-  private FormData fdlSizeLimit, fdSizeLimit;
+  // Split Size Line
+  private Label wlSplitSize;
+  private TextVar wSplitSize;
+  private FormData fdlSplitSize, fdSplitSize;
 
   // Remove files line
   private Label wlRemoveFiles;
   private Button wRemoveFiles;
   private FormData fdlRemoveFiles, fdRemoveFiles;
-
-  // Validation Mode Line
-  private Label wlValidationMode;
-  private CCombo wValidationMode;
-  private FormData fdlValidationMode, fdValidationMode;
 
   /* *************************************************************
    * End Loader Tab
@@ -290,26 +280,25 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
 
   private Map<String, Integer> inputFields;
 
-  private String[] tableFields = {};
-
   private Display display;
 
   /**
    * List of ColumnInfo that should have the field names of the selected database table
    */
-  private List<ColumnInfo> tableFieldColumns = new ArrayList<ColumnInfo>();
+  private List<ColumnInfo> tableFieldColumns = new ArrayList<>();
 
   private int margin = Const.MARGIN;
 
+  @SuppressWarnings( "unused" )
   public SnowflakeBulkLoaderDialog( Shell parent, Object in, TransMeta transMeta, String sname ) {
     super( parent, (BaseStepMeta) in, transMeta, sname );
     input = (SnowflakeBulkLoaderMeta) in;
-    inputFields = new HashMap<String, Integer>();
+    inputFields = new HashMap<>();
   }
 
   /**
    * Open the Bulk Loader dialog
-   * @return
+   * @return The step name
    */
   public String open() {
     Shell parent = getParent();
@@ -493,6 +482,75 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
       wLocationType.add( locationType );
     }
 
+    // Stage name line
+    //
+    wlStageName = new Label( wLoaderComp, SWT.RIGHT );
+    wlStageName.setText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.StageName.Label" ) );
+    props.setLook( wlStageName );
+    fdlStageName = new FormData();
+    fdlStageName.left = new FormAttachment( 0, 0 );
+    fdlStageName.top = new FormAttachment( wLocationType, margin * 2 );
+    fdlStageName.right = new FormAttachment( middle, -margin );
+    wlStageName.setLayoutData( fdlStageName );
+
+    wStageName = new ComboVar( transMeta, wLoaderComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER );
+    props.setLook( wStageName );
+    wStageName.addModifyListener( lsMod );
+    wStageName.addSelectionListener( lsFlags );
+    fdStageName = new FormData();
+    fdStageName.left = new FormAttachment( middle, 0 );
+    fdStageName.top = new FormAttachment( wLocationType, margin * 2 );
+    fdStageName.right = new FormAttachment( 100, 0 );
+    wStageName.setLayoutData( fdStageName );
+    wStageName.setEnabled( false );
+    wStageName.addFocusListener( new FocusAdapter() {
+      @Override
+      public void focusGained( FocusEvent focusEvent ) {
+        String stageNameText = wStageName.getText();
+        wStageName.removeAll();
+
+        DatabaseMeta databaseMeta = transMeta.findDatabase( wConnection.getText() );
+        if ( databaseMeta != null ) {
+          Database db = new Database( loggingObject, databaseMeta );
+          try {
+            db.connect();
+            String SQL = "show stages";
+            if ( !Const.isEmpty( transMeta.environmentSubstitute( wSchema.getText() ) ) ) {
+              SQL += " in " + transMeta.environmentSubstitute( wSchema.getText() );
+            }
+            ResultSet resultSet = db.openQuery( SQL, null, null, ResultSet.FETCH_FORWARD, false );
+            RowMetaInterface rowMeta = db.getReturnRowMeta();
+            Object[] row = db.getRow( resultSet );
+            int nameField = rowMeta.indexOfValue( "NAME" );
+            if ( nameField >= 0 ) {
+              while ( row != null ) {
+                String stageName = rowMeta.getString( row, nameField );
+                wStageName.add( stageName );
+                row = db.getRow( resultSet );
+              }
+            } else {
+              throw new KettleException( "Unable to find stage name field in result" );
+            }
+            db.closeQuery( resultSet );
+            if ( stageNameText != null ) {
+              wStageName.setText( stageNameText );
+            }
+
+
+          } catch ( Exception ex ) {
+            logDebug( "Error getting stages", ex );
+          } finally {
+            try {
+
+              db.disconnect();
+            } catch ( Exception ex ) {
+              //ignore
+            }
+          }
+        }
+      }
+    } );
+
     // Work directory line
     wlWorkDirectory = new Label( wLoaderComp, SWT.RIGHT );
     wlWorkDirectory.setText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.WorkDirectory.Label" ) );
@@ -500,7 +558,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     props.setLook( wlWorkDirectory );
     fdlWorkDirectory = new FormData();
     fdlWorkDirectory.left = new FormAttachment( 0, 0 );
-    fdlWorkDirectory.top = new FormAttachment( wLocationType, margin );
+    fdlWorkDirectory.top = new FormAttachment( wStageName, margin );
     fdlWorkDirectory.right = new FormAttachment( middle, -margin );
     wlWorkDirectory.setLayoutData( fdlWorkDirectory );
 
@@ -509,7 +567,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     wbWorkDirectory.setText( BaseMessages.getString( PKG, "System.Button.Browse" ) );
     fdbWorkDirectory = new FormData();
     fdbWorkDirectory.right = new FormAttachment( 100, 0 );
-    fdbWorkDirectory.top = new FormAttachment( wLocationType, margin );
+    fdbWorkDirectory.top = new FormAttachment( wStageName, margin );
     wbWorkDirectory.setLayoutData( fdbWorkDirectory );
 
     wWorkDirectory = new TextVar( transMeta, wLoaderComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER );
@@ -518,7 +576,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     wWorkDirectory.addModifyListener( lsMod );
     fdWorkDirectory = new FormData();
     fdWorkDirectory.left = new FormAttachment( middle, 0 );
-    fdWorkDirectory.top = new FormAttachment( wLocationType, margin );
+    fdWorkDirectory.top = new FormAttachment( wStageName, margin );
     fdWorkDirectory.right = new FormAttachment( wbWorkDirectory, -margin );
     wWorkDirectory.setLayoutData( fdWorkDirectory );
 
@@ -588,24 +646,24 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     wErrorLimit.setLayoutData( fdErrorLimit );
 
     //Size limit line
-    wlSizeLimit = new Label( wLoaderComp, SWT.RIGHT );
-    wlSizeLimit.setText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.SizeLimit.Label" ) );
-    wlSizeLimit.setToolTipText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.SizeLimit.Tooltip" ) );
-    props.setLook( wlSizeLimit );
-    fdlSizeLimit = new FormData();
-    fdlSizeLimit.left = new FormAttachment( 0, 0 );
-    fdlSizeLimit.top = new FormAttachment( wErrorLimit, margin );
-    fdlSizeLimit.right = new FormAttachment( middle, -margin );
-    wlSizeLimit.setLayoutData( fdlSizeLimit );
+    wlSplitSize = new Label( wLoaderComp, SWT.RIGHT );
+    wlSplitSize.setText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.SplitSize.Label" ) );
+    wlSplitSize.setToolTipText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.SplitSize.Tooltip" ) );
+    props.setLook( wlSplitSize );
+    fdlSplitSize = new FormData();
+    fdlSplitSize.left = new FormAttachment( 0, 0 );
+    fdlSplitSize.top = new FormAttachment( wErrorLimit, margin );
+    fdlSplitSize.right = new FormAttachment( middle, -margin );
+    wlSplitSize.setLayoutData( fdlSplitSize );
 
-    wSizeLimit = new TextVar( transMeta, wLoaderComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER );
-    props.setLook( wSizeLimit );
-    wSizeLimit.addModifyListener( lsMod );
-    fdSizeLimit = new FormData();
-    fdSizeLimit.left = new FormAttachment( middle, 0 );
-    fdSizeLimit.top = new FormAttachment( wErrorLimit, margin );
-    fdSizeLimit.right = new FormAttachment( 100, 0 );
-    wSizeLimit.setLayoutData( fdSizeLimit );
+    wSplitSize = new TextVar( transMeta, wLoaderComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER );
+    props.setLook( wSplitSize );
+    wSplitSize.addModifyListener( lsMod );
+    fdSplitSize = new FormData();
+    fdSplitSize.left = new FormAttachment( middle, 0 );
+    fdSplitSize.top = new FormAttachment( wErrorLimit, margin );
+    fdSplitSize.right = new FormAttachment( 100, 0 );
+    wSplitSize.setLayoutData( fdSplitSize );
 
     // Remove files line
     //
@@ -615,7 +673,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     props.setLook( wlRemoveFiles );
     fdlRemoveFiles = new FormData();
     fdlRemoveFiles.left = new FormAttachment( 0, 0 );
-    fdlRemoveFiles.top = new FormAttachment( wSizeLimit, margin );
+    fdlRemoveFiles.top = new FormAttachment( wSplitSize, margin );
     fdlRemoveFiles.right = new FormAttachment( middle, -margin );
     wlRemoveFiles.setLayoutData( fdlRemoveFiles );
 
@@ -623,36 +681,10 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     props.setLook( wRemoveFiles );
     fdRemoveFiles = new FormData();
     fdRemoveFiles.left = new FormAttachment( middle, 0 );
-    fdRemoveFiles.top = new FormAttachment( wSizeLimit, margin );
+    fdRemoveFiles.top = new FormAttachment( wSplitSize, margin );
     fdRemoveFiles.right = new FormAttachment( 100, 0 );
     wRemoveFiles.setLayoutData( fdRemoveFiles );
     wRemoveFiles.addSelectionListener( bMod );
-
-    // Validation Mode Line
-    //
-    wlValidationMode = new Label( wLoaderComp, SWT.RIGHT );
-    wlValidationMode.setText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.ValidationMode.Label" ) );
-    wlValidationMode.setToolTipText( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.ValidationMode.Tooltip" ) );
-    props.setLook( wlValidationMode );
-    fdlValidationMode = new FormData();
-    fdlValidationMode.left = new FormAttachment( 0, 0 );
-    fdlValidationMode.top = new FormAttachment( wRemoveFiles, margin );
-    fdlValidationMode.right = new FormAttachment( middle, -margin );
-    wlValidationMode.setLayoutData( fdlValidationMode );
-
-    wValidationMode = new CCombo( wLoaderComp, SWT.BORDER | SWT.READ_ONLY );
-    wValidationMode.setEditable( false );
-    props.setLook( wValidationMode );
-    wValidationMode.addModifyListener( lsMod );
-    wValidationMode.addSelectionListener( lsFlags );
-    fdValidationMode = new FormData();
-    fdValidationMode.left = new FormAttachment( middle, 0 );
-    fdValidationMode.top = new FormAttachment( wRemoveFiles, margin );
-    fdValidationMode.right = new FormAttachment( 100, 0 );
-    wValidationMode.setLayoutData( fdValidationMode );
-    for ( String validationMode : VALIDATION_MODE_COMBO ) {
-      wValidationMode.add( validationMode );
-    }
 
     fdLoaderComp = new FormData();
     fdLoaderComp.left = new FormAttachment( 0, 0 );
@@ -1186,16 +1218,16 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
    * Sets the input stream field names in the JSON field drop down, and the Stream field drop down in the field
    * mapping table.
    */
-  protected void setComboBoxes() {
+  private void setComboBoxes() {
     // Something was changed in the row.
     //
-    final Map<String, Integer> fields = new HashMap<String, Integer>();
+    final Map<String, Integer> fields = new HashMap<>();
 
     // Add the currentMeta fields...
     fields.putAll( inputFields );
 
     Set<String> keySet = fields.keySet();
-    List<String> entries = new ArrayList<String>( keySet );
+    List<String> entries = new ArrayList<>( keySet );
 
     String[] fieldNames = entries.toArray( new String[entries.size()] );
 
@@ -1208,7 +1240,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
   /**
    * Copy information from the meta-data input to the dialog fields.
    */
-  public void getData() {
+  private void getData() {
     if ( input.getDatabaseMeta() != null ) {
       wConnection.setText( input.getDatabaseMeta().getName() );
     }
@@ -1225,9 +1257,9 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
       wLocationType.setText( LOCATION_TYPE_COMBO[input.getLocationTypeId()] );
     }
 
- /*   if ( input.getStageName() != null ) {
+    if ( input.getStageName() != null ) {
       wStageName.setText( input.getStageName() );
-    } */
+    }
 
     if ( input.getWorkDirectory() != null ) {
       wWorkDirectory.setText( input.getWorkDirectory() );
@@ -1241,15 +1273,11 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
       wErrorLimit.setText( input.getErrorLimit() );
     }
 
-    if ( input.getSizeLimit() != null ) {
-      wSizeLimit.setText( input.getSizeLimit() );
+    if ( input.getSplitSize() != null ) {
+      wSplitSize.setText( input.getSplitSize() );
     }
 
     wRemoveFiles.setSelection( input.isRemoveFiles() );
-
-    if ( input.getValidationMode() != null ) {
-      wValidationMode.setText( VALIDATION_MODE_COMBO[input.getValidationModId()] );
-    }
 
     if ( input.getDataType() != null ) {
       wDataType.setText( DATA_TYPE_COMBO[input.getDataTypeId()] );
@@ -1307,13 +1335,12 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     sbl.setTargetSchema( wSchema.getText() );
     sbl.setTargetTable( wTable.getText() );
     sbl.setLocationTypeById( wLocationType.getSelectionIndex() );
-//    sbl.setStageName( wStageName.getText() );
+    sbl.setStageName( wStageName.getText() );
     sbl.setWorkDirectory( wWorkDirectory.getText() );
     sbl.setOnErrorById( wOnError.getSelectionIndex() );
     sbl.setErrorLimit( wErrorLimit.getText() );
-    sbl.setSizeLimit( wSizeLimit.getText() );
+    sbl.setSplitSize( wSplitSize.getText() );
     sbl.setRemoveFiles( wRemoveFiles.getSelection() );
-    sbl.setValidationModeById( wValidationMode.getSelectionIndex() );
 
     sbl.setDataTypeById( wDataType.getSelectionIndex() );
     sbl.setTrimWhitespace( wTrimWhitespace.getSelection() );
@@ -1395,7 +1422,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     input.setTargetSchema( transMeta.environmentSubstitute( wSchema.getText() ) );
     StepMetaInterface stepMetaInterface = stepMeta.getStepMetaInterface();
     try {
-      targetFields = stepMetaInterface.getRequiredFields( transMeta ); //TODO: look at this
+      targetFields = stepMetaInterface.getRequiredFields( transMeta );
     } catch ( KettleException e ) {
       new ErrorDialog( shell,
               BaseMessages.getString( PKG, "SnowflakeBulkLoader.DoMapping.UnableToFindTargetFields.Title" ),
@@ -1403,15 +1430,9 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
       return;
     }
 
-    String[] inputNames = new String[sourceFields.size()];
-    for ( int i = 0; i < sourceFields.size(); i++ ) {
-      ValueMetaInterface value = sourceFields.getValueMeta( i );
-      inputNames[i] = value.getName() + EnterMappingDialog.STRING_ORIGIN_SEPARATOR + value.getOrigin() + ")";
-    }
-
     // Create the existing mapping list...
     //
-    List<SourceToTargetMapping> mappings = new ArrayList<SourceToTargetMapping>();
+    List<SourceToTargetMapping> mappings = new ArrayList<>();
     StringBuilder missingSourceFields = new StringBuilder();
     StringBuilder missingTargetFields = new StringBuilder();
 
@@ -1544,7 +1565,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
       }
     } else {
       MessageBox mb = new MessageBox( shell, SWT.OK | SWT.ICON_ERROR );
-      mb.setMessage( BaseMessages.getString( PKG, "SnowflakeBulklLoader.Dialog..ConnectionError2.DialogMessage" ) );
+      mb.setMessage( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.ConnectionError2.DialogMessage" ) );
       mb.setText( BaseMessages.getString( PKG, "System.Dialog.Error.Title" ) );
       mb.open();
     }
@@ -1592,12 +1613,14 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
                 // filled, but no problem for the user
               } finally {
                 try {
+                  //noinspection ConstantConditions
                   if ( db != null ) {
                     db.disconnect();
                   }
                 } catch ( Exception ignored ) {
                   // ignore any errors here. Nothing we can do if
                   // connection fails to close properly
+                  //noinspection UnusedAssignment
                   db = null;
                 }
               }
@@ -1609,7 +1632,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     shell.getDisplay().asyncExec( fieldLoader );
   }
 
-  public void setFlags() {
+  private void setFlags() {
     /////////////////////////////////
     // On Error
     ////////////////////////////////
@@ -1626,6 +1649,15 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     } else {
       wlErrorLimit.setEnabled( false );
       wErrorLimit.setEnabled( false );
+    }
+
+    ////////////////////////////
+    // Location Type
+    ////////////////////////////
+    if ( wLocationType.getSelectionIndex() == SnowflakeBulkLoaderMeta.LOCATION_TYPE_INTERNAL_STAGE ) {
+      wStageName.setEnabled( true );
+    } else {
+      wStageName.setEnabled( false );
     }
 
     ////////////////////////////

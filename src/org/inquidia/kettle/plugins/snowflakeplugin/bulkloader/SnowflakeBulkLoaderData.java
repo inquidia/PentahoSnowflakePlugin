@@ -22,7 +22,6 @@ import org.pentaho.di.core.compress.CompressionOutputStream;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
-import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.trans.step.BaseStepData;
 import org.pentaho.di.trans.step.StepDataInterface;
 
@@ -40,6 +39,7 @@ import java.util.Map;
 /**
  * @author Inquidia Consulting
  */
+@SuppressWarnings( "WeakerAccess" )
 public class SnowflakeBulkLoaderData extends BaseStepData implements StepDataInterface {
 
   public int splitnr;
@@ -49,7 +49,9 @@ public class SnowflakeBulkLoaderData extends BaseStepData implements StepDataInt
   public Database db;
   public DatabaseMeta databaseMeta;
 
-  RowMetaInterface dbFields;
+  public ArrayList<String[]> dbFields;
+
+  public int outputCount;
 
 
   public NumberFormat nf;
@@ -86,11 +88,7 @@ public class SnowflakeBulkLoaderData extends BaseStepData implements StepDataInt
 
   public int fileNameFieldIndex;
 
-  public ValueMetaInterface fileNameMeta;
-
   public Map<String, OutputStream> fileWriterMap;
-
-  public String fileName;
 
   public SnowflakeBulkLoaderData() {
     super();
@@ -108,12 +106,13 @@ public class SnowflakeBulkLoaderData extends BaseStepData implements StepDataInt
     defaultDateFormat = new SimpleDateFormat();
     defaultDateFormatSymbols = new DateFormatSymbols();
 
-    previouslyOpenedFiles = new ArrayList<String>();
+    previouslyOpenedFiles = new ArrayList<>();
     fileNameFieldIndex = -1;
 
     oneFileOpened = false;
+    outputCount = 0;
 
-    fileWriterMap = new HashMap<String, OutputStream>();
+    fileWriterMap = new HashMap<>();
 
     dbFields = null;
     db = null;

@@ -29,12 +29,15 @@ import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.plugins.DatabaseMetaPlugin;
 import org.pentaho.di.core.row.ValueMetaInterface;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Contains Snowflake specific information through static final members
  *
  * @author Chris
  */
-@DatabaseMetaPlugin(type = "SNOWFLAKE", typeDescription = "Snowflake Database")
+@DatabaseMetaPlugin( type = "SNOWFLAKE", typeDescription = "Snowflake Database" )
 public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseInterface {
 
   @Override
@@ -44,10 +47,24 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
 
   @Override
   public int getDefaultDatabasePort() {
-    if (getAccessType() == DatabaseMeta.TYPE_ACCESS_NATIVE) {
+    if ( getAccessType() == DatabaseMeta.TYPE_ACCESS_NATIVE ) {
       return 443;
     }
     return -1;
+  }
+
+  @Override
+  public String getXulOverlayFile() {
+    return "snowflake";
+  }
+
+  @Override
+  public Map<String, String> getDefaultOptions() {
+    Map<String, String> defaultOptions = new HashMap<>();
+    defaultOptions.put( getPluginId() + ".warehouse", "nowarehouse" );
+    defaultOptions.put( getPluginId() + ".ssl", "on" );
+
+    return defaultOptions;
   }
 
   @Override
@@ -57,7 +74,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
 
   @Override
   public String getDriverClass() {
-    if (getAccessType() == DatabaseMeta.TYPE_ACCESS_ODBC) {
+    if ( getAccessType() == DatabaseMeta.TYPE_ACCESS_ODBC ) {
       return "sun.jdbc.odbc.JdbcOdbcDriver";
     } else {
       return "com.snowflake.client.jdbc.SnowflakeDriver";
@@ -65,18 +82,18 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
   }
 
   @Override
-  public String getURL(String hostname, String port, String databaseName) {
-    if (getAccessType() == DatabaseMeta.TYPE_ACCESS_ODBC) {
+  public String getURL( String hostname, String port, String databaseName ) {
+    if ( getAccessType() == DatabaseMeta.TYPE_ACCESS_ODBC ) {
       return "jdbc:odbc:" + databaseName;
     } else {
       String realHostname = hostname;
       String account = hostname;
-      if( !realHostname.contains( "." ) ) {
-        realHostname = hostname+".snowflakecomputing.com";
+      if ( !realHostname.contains( "." ) ) {
+        realHostname = hostname + ".snowflakecomputing.com";
       } else {
         account = hostname.substring( 0, hostname.indexOf( "." ) );
       }
-      if (Const.isEmpty(port)) {
+      if ( Const.isEmpty( port ) ) {
         return "jdbc:snowflake://" + realHostname + "/?account=" + account + "&db=" + databaseName
           + "&user=" + getUsername() + "&password=" + getPassword();
       } else {
@@ -98,9 +115,9 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    * @return the SQL statement to add a column to the specified table
    */
   @Override
-  public String getAddColumnStatement(String tablename, ValueMetaInterface v, String tk, boolean use_autoinc,
-                                      String pk, boolean semicolon) {
-    return "ALTER TABLE " + tablename + " ADD COLUMN " + getFieldDefinition(v, tk, pk, use_autoinc, true, false);
+  public String getAddColumnStatement( String tablename, ValueMetaInterface v, String tk, boolean use_autoinc,
+                                       String pk, boolean semicolon ) {
+    return "ALTER TABLE " + tablename + " ADD COLUMN " + getFieldDefinition( v, tk, pk, use_autoinc, true, false );
   }
 
   /**
@@ -115,8 +132,8 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    * @return the SQL statement to drop a column from the specified table
    */
   @Override
-  public String getDropColumnStatement(String tablename, ValueMetaInterface v, String tk, boolean use_autoinc,
-                                       String pk, boolean semicolon) {
+  public String getDropColumnStatement( String tablename, ValueMetaInterface v, String tk, boolean use_autoinc,
+                                        String pk, boolean semicolon ) {
     return "ALTER TABLE " + tablename + " DROP COLUMN " + v.getName() + Const.CR;
   }
 
@@ -132,31 +149,31 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    * @return the SQL statement to modify a column in the specified table
    */
   @Override
-  public String getModifyColumnStatement(String tablename, ValueMetaInterface v, String tk,
-                                         boolean use_autoinc, String pk, boolean semicolon) {
-    return "ALTER TABLE " + tablename + " MODIFY COLUMN " + getFieldDefinition(v, tk, pk, use_autoinc, true, false);
+  public String getModifyColumnStatement( String tablename, ValueMetaInterface v, String tk,
+                                          boolean use_autoinc, String pk, boolean semicolon ) {
+    return "ALTER TABLE " + tablename + " MODIFY COLUMN " + getFieldDefinition( v, tk, pk, use_autoinc, true, false );
   }
 
   @Override
-  public String getFieldDefinition(ValueMetaInterface v, String tk, String pk, boolean use_autoinc,
-                                   boolean add_fieldname, boolean add_cr) {
+  public String getFieldDefinition( ValueMetaInterface v, String tk, String pk, boolean use_autoinc,
+                                    boolean add_fieldname, boolean add_cr ) {
     String retval = "";
 
     String fieldname = v.getName();
     int length = v.getLength();
     int precision = v.getPrecision();
 
-    if (add_fieldname) {
+    if ( add_fieldname ) {
       retval += fieldname + " ";
     }
 
     int type = v.getType();
-    switch (type) {
+    switch ( type ) {
       case ValueMetaInterface.TYPE_DATE:
         retval += "TIMESTAMP";
         break;
       case ValueMetaInterface.TYPE_BOOLEAN:
-        if (supportsBooleanDataType()) {
+        if ( supportsBooleanDataType() ) {
           retval += "BOOLEAN";
         } else {
           retval += "CHAR(1)";
@@ -166,19 +183,19 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
       case ValueMetaInterface.TYPE_NUMBER:
       case ValueMetaInterface.TYPE_INTEGER:
       case ValueMetaInterface.TYPE_BIGNUMBER:
-        if (fieldname.equalsIgnoreCase(tk) || // Technical key
-          fieldname.equalsIgnoreCase(pk) // Primary key
-          ) {
-          if (use_autoinc) {
+        if ( fieldname.equalsIgnoreCase( tk ) || // Technical key
+          fieldname.equalsIgnoreCase( pk ) // Primary key
+            ) {
+          if ( use_autoinc ) {
             retval += "BIGINT AUTOINCREMENT NOT NULL PRIMARY KEY";
           } else {
             retval += "BIGINT NOT NULL PRIMARY KEY";
           }
         } else {
           // Integer values...
-          if (precision == 0) {
-            if (length > 9) {
-              if (length < 19) {
+          if ( precision == 0 ) {
+            if ( length > 9 ) {
+              if ( length < 19 ) {
                 // can hold signed values between -9223372036854775808 and 9223372036854775807
                 // 18 significant digits
                 retval += "BIGINT";
@@ -190,7 +207,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
             }
           } else {
             // Floating point values...
-            if (length > 15) {
+            if ( length > 15 ) {
               retval += "NUMBER(" + length + ", " + precision + ")";
             } else {
               retval += "FLOAT";
@@ -199,7 +216,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
         }
         break;
       case ValueMetaInterface.TYPE_STRING:
-        if (length == 1) {
+        if ( length == 1 ) {
           retval += "CHAR(1)";
         } else {
           retval += "VARCHAR(" + length + ")";
@@ -213,7 +230,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
         break;
     }
 
-    if (add_cr) {
+    if ( add_cr ) {
       retval += Const.CR;
     }
 
@@ -222,16 +239,13 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
 
   @Override
   public String[] getUsedLibraries() {
-    return new String[]{"snowflake_jdbc.jar"};
+    return new String[]{ "snowflake_jdbc.jar" };
   }
 
-  //TODO: Verify
   @Override
-  public String getLimitClause(int nrRows) {
+  public String getLimitClause( int nrRows ) {
     return " LIMIT " + nrRows;
   }
-
-  //TODO: Verify
 
   /**
    * Returns the minimal SQL to launch in order to determine the layout of the resultset for a given database table
@@ -240,23 +254,22 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    * @return The SQL to launch.
    */
   @Override
-  public String getSQLQueryFields(String tableName) {
+  public String getSQLQueryFields( String tableName ) {
     return "SELECT * FROM " + tableName + " LIMIT 0";
   }
 
   @Override
-  public String getSQLTableExists(String tablename) {
-    return getSQLQueryFields(tablename);
+  public String getSQLTableExists( String tablename ) {
+    return getSQLQueryFields( tablename );
   }
 
   @Override
-  public String getSQLColumnExists(String columnname, String tablename) {
-    return getSQLQueryColumnFields(columnname, tablename);
+  public String getSQLColumnExists( String columnname, String tablename ) {
+    return getSQLQueryColumnFields( columnname, tablename );
   }
 
-  //TODO: Verify
   @SuppressWarnings( "WeakerAccess" )
-  public String getSQLQueryColumnFields( String columnname, String tableName) {
+  public String getSQLQueryColumnFields( String columnname, String tableName ) {
     return "SELECT " + columnname + " FROM " + tableName + " LIMIT 0";
   }
 
@@ -264,11 +277,11 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    * @see org.pentaho.di.core.database.DatabaseInterface#getNotFoundTK(boolean)
    */
   @Override
-  public int getNotFoundTK(boolean use_autoinc) {
-    if (supportsAutoInc() && use_autoinc) {
+  public int getNotFoundTK( boolean use_autoinc ) {
+    if ( supportsAutoInc() && use_autoinc ) {
       return 1;
     }
-    return super.getNotFoundTK(use_autoinc);
+    return super.getNotFoundTK( use_autoinc );
   }
 
   /**
@@ -276,7 +289,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    */
   @Override
   public String getExtraOptionSeparator() {
-    return "?";
+    return "&";
   }
 
   /**
@@ -284,7 +297,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    */
   @Override
   public String getExtraOptionIndicator() {
-    return "?";
+    return "&";
   }
 
   /**
@@ -326,14 +339,14 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    */
   @Override
   public String[] getReservedWords() {
-    return new String[]{"ALL", "ALTER", "AND", "ANY", "AS", "ASC", "BETWEEN", "BY", "CASE", "CAST", "CHECK", "CLUSTER",
+    return new String[]{ "ALL", "ALTER", "AND", "ANY", "AS", "ASC", "BETWEEN", "BY", "CASE", "CAST", "CHECK", "CLUSTER",
       "COLUMN", "CONNECT", "CREATE", "CROSS", "CURRENT", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "EXCLUSIVE",
       "EXISTS", "FALSE", "FOR", "FROM", "FULL", "GRANT", "GROUP", "HAVING", "IDENTIFIED", "IMMEDIATE", "IN",
       "INCREMENT", "INNER", "INSERT", "INTERSECT", "INTO", "IS", "JOIN", "LATERAL", "LEFT", "LIKE", "LOCK",
       "LONG", "MAXEXTENTS", "MINUS", "MODIFY", "NATURAL", "NOT", "NULL", "OF", "ON", "OPTION", "OR", "ORDER",
       "REGEXP", "RENAME", "REVOKE", "RIGHT", "RLIKE", "ROW", "ROWS", "SELECT", "SET", "SOME", "START", "TABLE",
       "THEN", "TO", "TRIGGER", "TRUE", "UNION", "UNIQUE", "UPDATE", "USING", "VALUES", "WHEN", "WHENEVER",
-      "WHERE", "WITH"};
+      "WHERE", "WITH" };
   }
 
   /*
@@ -373,8 +386,8 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    * @return the SQL to insert the unknown record into the SCD.
    */
   @Override
-  public String getSQLInsertAutoIncUnknownDimensionRow(String schemaTable, String keyField,
-                                                       String versionField) {
+  public String getSQLInsertAutoIncUnknownDimensionRow( String schemaTable, String keyField,
+                                                        String versionField ) {
     return "insert into " + schemaTable + "(" + keyField + ", " + versionField + ") values (1, 1)";
   }
 
@@ -383,10 +396,10 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    * @return A string that is properly quoted for use in a SQL statement (insert, update, delete, etc)
    */
   @Override
-  public String quoteSQLString(String string) {
-    string = string.replaceAll("'", "\\\\'");
-    string = string.replaceAll("\\n", "\\\\n");
-    string = string.replaceAll("\\r", "\\\\r");
+  public String quoteSQLString( String string ) {
+    string = string.replaceAll( "'", "\\\\'" );
+    string = string.replaceAll( "\\n", "\\\\n" );
+    string = string.replaceAll( "\\r", "\\\\r" );
     return "'" + string + "'";
   }
 

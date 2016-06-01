@@ -25,9 +25,16 @@ import org.pentaho.di.core.Const;
 import org.pentaho.di.core.compress.CompressionProvider;
 import org.pentaho.di.core.compress.CompressionProviderFactory;
 import org.pentaho.di.core.database.Database;
-import org.pentaho.di.core.exception.*;
+import org.pentaho.di.core.exception.KettleDatabaseException;
+import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.exception.KettleFileException;
+import org.pentaho.di.core.exception.KettleStepException;
+import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.core.row.value.ValueMetaDate;
+import org.pentaho.di.core.row.value.ValueMetaNumber;
+import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.vfs.KettleVFS;
 import org.pentaho.di.i18n.BaseMessages;
@@ -42,6 +49,7 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 import java.io.BufferedOutputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -64,8 +72,8 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
 
   @SuppressWarnings( "deprecation" )
   public synchronized boolean processRow( StepMetaInterface smi, StepDataInterface sdi ) throws KettleException {
-    meta = ( SnowflakeBulkLoaderMeta ) smi;
-    data = ( SnowflakeBulkLoaderData ) sdi;
+    meta = (SnowflakeBulkLoaderMeta) smi;
+    data = (SnowflakeBulkLoaderData) sdi;
 
     Object[] row = getRow(); // This also waits for a row to be finished.
 
@@ -81,10 +89,10 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
       initBinaryDataFields();
 
       if ( meta.isSpecifyFields() && meta.getDataType().equals(
-          SnowflakeBulkLoaderMeta.DATA_TYPE_CODES[SnowflakeBulkLoaderMeta.DATA_TYPE_CSV] ) ) {
+        SnowflakeBulkLoaderMeta.DATA_TYPE_CODES[SnowflakeBulkLoaderMeta.DATA_TYPE_CSV] ) ) {
         // Get input field mapping
         data.fieldnrs = new HashMap<>();
-        data.dbFields = meta.getRequiredFields();
+        getDbFields();
         for ( int i = 0; i < meta.getSnowflakeBulkLoaderFields().length; i++ ) {
           int streamFieldLocation = data.outputRowMeta.indexOfValue(
             meta.getSnowflakeBulkLoaderFields()[i].getStreamField() );
@@ -93,7 +101,14 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
               + "] couldn't be found in the input stream!" );
           }
 
-          int dbFieldLocation = data.dbFields.indexOfValue( meta.getSnowflakeBulkLoaderFields()[i].getTableField() );
+          int dbFieldLocation = -1;
+          for ( int e = 0; e < data.dbFields.size(); e++ ) {
+            String[] field = data.dbFields.get( e );
+            if ( field[0].equalsIgnoreCase( meta.getSnowflakeBulkLoaderFields()[i].getTableField() ) ) {
+              dbFieldLocation = e;
+              break;
+            }
+          }
           if ( dbFieldLocation < 0 ) {
             throw new KettleException( "Field [" + meta.getSnowflakeBulkLoaderFields()[i].getTableField()
               + "] couldn't be found in the table!" );
@@ -101,13 +116,22 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
 
           data.fieldnrs.put( meta.getSnowflakeBulkLoaderFields()[i].getTableField(), streamFieldLocation );
         }
+      } else if ( meta.getDataType().equals(
+        SnowflakeBulkLoaderMeta.DATA_TYPE_CODES[SnowflakeBulkLoaderMeta.DATA_TYPE_JSON] ) ) {
+        data.fieldnrs = new HashMap<>();
+        int streamFieldLocation = data.outputRowMeta.indexOfValue(  meta.getJsonField() );
+        if ( streamFieldLocation < 0 ) {
+          throw new KettleStepException( "Field [" + meta.getJsonField()
+            + "] couldn't be found in the input stream!" );
+        }
+        data.fieldnrs.put( "json", streamFieldLocation );
       }
 
     }
 
     // Create a new split?
-    if ( ( row != null && getLinesOutput() > 0 && SnowflakeBulkLoaderMeta.SPLIT_EVERY > 0
-      && ( getLinesOutput() % SnowflakeBulkLoaderMeta.SPLIT_EVERY ) == 0 ) ) {
+    if ( ( row != null && data.outputCount > 0 && Const.toInt( environmentSubstitute( meta.getSplitSize() ), 0 ) > 0
+      && ( data.outputCount % Const.toInt( environmentSubstitute( meta.getSplitSize() ), 0 ) ) == 0 ) ) {
 
       // Done with this part or with everything.
       closeFile();
@@ -118,6 +142,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
 
     if ( row == null ) {
       // no more input to be expected...
+      closeFile();
       loadDatabase();
       setOutputDone();
       return false;
@@ -126,30 +151,98 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     writeRowToFile( data.outputRowMeta, row );
     putRow( data.outputRowMeta, row ); // in case we want it to go further...
 
-    if ( checkFeedback( getLinesOutput() ) ) {
-      logBasic( "linenr " + getLinesOutput() );
+    if ( checkFeedback( data.outputCount ) ) {
+      logBasic( "linenr " + data.outputCount );
     }
 
     return true;
   }
 
-  private void loadDatabase() throws KettleDatabaseException {
-    for ( String file : data.getPreviouslyOpenedFiles() ) {
-      String SQL = "PUT " + file + " " + meta.getStage( this );
-
-      logDebug( "Executing SQL " + SQL );
-      // data.db.execStatement( SQL );
+  private void getDbFields() throws KettleException {
+    data.dbFields = new ArrayList<>();
+    String SQL = "desc table ";
+    if ( !Const.isEmpty( environmentSubstitute( meta.getTargetSchema() ) ) ) {
+      SQL += environmentSubstitute( meta.getTargetSchema() ) + ".";
     }
+    SQL += environmentSubstitute( meta.getTargetTable() );
+    logDetailed( "Executing SQL " + SQL );
+    try {
+      ResultSet resultSet = data.db.openQuery( SQL, null, null, ResultSet.FETCH_FORWARD, false );
+
+      RowMetaInterface rowMeta = data.db.getReturnRowMeta();
+      int nameField = rowMeta.indexOfValue( "NAME" );
+      int typeField = rowMeta.indexOfValue( "TYPE" );
+      if ( nameField < 0 || typeField < 0 ) {
+        throw new KettleException( "Unable to get database fields" );
+      }
+
+      Object[] row = data.db.getRow( resultSet );
+      if ( row == null ) {
+        throw new KettleException( "No fields found in table" );
+      }
+      while ( row != null ) {
+        String[] field = new String[2];
+        field[0] = rowMeta.getString( row, nameField );
+        field[1] = rowMeta.getString( row, typeField );
+        data.dbFields.add( field );
+        row = data.db.getRow( resultSet );
+      }
+      data.db.closeQuery( resultSet );
+    } catch ( Exception ex ) {
+      throw new KettleException( "Error getting database fields", ex );
+    }
+  }
+
+  private void loadDatabase() throws KettleDatabaseException, KettleFileException, KettleValueException {
+    boolean endsWithSlash = environmentSubstitute( meta.getWorkDirectory() ).endsWith( "\\" )
+      || environmentSubstitute( meta.getWorkDirectory() ).endsWith( "/" );
+    String SQL = "PUT 'file://" + environmentSubstitute( meta.getWorkDirectory() ).replaceAll( "\\\\", "/" )
+      + ( endsWithSlash ? "" : "/" ) + environmentSubstitute( meta.getTargetTable() ) + "_"
+      + meta.getFileDate() + "_*' " + meta.getStage( this ) + ";";
+
+    logDebug( "Executing SQL " + SQL );
+    data.db.execStatement( SQL );
 
     String copySQL = meta.getCopyStatement( this, data.getPreviouslyOpenedFiles() );
     logDebug( "Executing SQL " + copySQL );
-    // data.db.execStatement( copySQL );
+    ResultSet resultSet = data.db.openQuery( copySQL, null, null, ResultSet.FETCH_FORWARD, false );
+    RowMetaInterface rowMeta = data.db.getReturnRowMeta();
+
+    Object[] row = data.db.getRow( resultSet );
+    int rowsLoaded = 0;
+    int rowsLoadedField = rowMeta.indexOfValue( "rows_loaded" );
+    int rowsError = 0;
+    int errorField = rowMeta.indexOfValue( "errors_seen" );
+    logBasic( "====================== Bulk Load Results======================" );
+    int rowNum = 1;
+    while ( row != null ) {
+      logBasic( "---------------------- Row " + rowNum + " ----------------------" );
+      for ( int i = 0; i < rowMeta.getFieldNames().length; i++ ) {
+        logBasic( rowMeta.getFieldNames()[i] + " = " + rowMeta.getString( row, i ) );
+      }
+
+      if ( rowsLoadedField >= 0 ) {
+        rowsLoaded += rowMeta.getInteger( row, rowsLoadedField );
+      }
+
+      if ( errorField >= 0 ) {
+        rowsError += rowMeta.getInteger( row, errorField );
+      }
+
+      rowNum++;
+      row = data.db.getRow( resultSet );
+    }
+    data.db.closeQuery( resultSet );
+    setLinesOutput( rowsLoaded );
+    setLinesRejected( rowsError );
+
+    data.db.execStatement( "commit" );
 
   }
 
   private void writeRowToFile( RowMetaInterface rowMeta, Object[] r ) throws KettleStepException {
     try {
-      if ( meta.getDataTypeId() == SnowflakeBulkLoaderMeta.DATA_TYPE_CSV || !meta.isSpecifyFields() ) {
+      if ( meta.getDataTypeId() == SnowflakeBulkLoaderMeta.DATA_TYPE_CSV && !meta.isSpecifyFields() ) {
         /*
          * Write all values in stream to text file.
          */
@@ -166,44 +259,57 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
           writeField( v, valueData, null );
         }
         data.writer.write( data.binaryNewline );
-      } else {
+      } else if ( meta.getDataTypeId() == SnowflakeBulkLoaderMeta.DATA_TYPE_CSV ) {
         /*
          * Only write the fields specified!
          */
         for ( int i = 0; i < data.dbFields.size(); i++ ) {
-          if ( i > 0 && data.binarySeparator.length > 0 ) {
-            data.writer.write( data.binarySeparator );
-          }
+          if ( data.dbFields.get( i ) != null ) {
+            if ( i > 0 && data.binarySeparator.length > 0 ) {
+              data.writer.write( data.binarySeparator );
+            }
 
-          ValueMetaInterface v = data.dbFields.getValueMeta( i );
+            String[] field = data.dbFields.get( i );
+            ValueMetaInterface v;
 
-          switch ( v.getType() ) {
-            case ValueMetaInterface.TYPE_TIMESTAMP:
-              v.setConversionMask( SnowflakeBulkLoaderMeta.TIMESTAMP_FORMAT_STRING );
-              break;
-            case ValueMetaInterface.TYPE_DATE:
-              v.setConversionMask( SnowflakeBulkLoaderMeta.DATE_FORMAT_STRING );
-              break;
-            case ValueMetaInterface.TYPE_INTEGER:
-              v.setConversionMask( "#" );
-              break;
-            case ValueMetaInterface.TYPE_BIGNUMBER:
-            case ValueMetaInterface.TYPE_NUMBER:
+            if ( field[1].toUpperCase().startsWith( "TIMESTAMP" ) ) {
+              v = new ValueMetaDate();
+              v.setConversionMask( "yyyy-MM-dd HH:mm:ss.SSS" );
+            } else if ( field[1].toUpperCase().startsWith( "DATE" ) ) {
+              v = new ValueMetaDate();
+              v.setConversionMask( "yyyy-MM-dd" );
+            } else if ( field[1].toUpperCase().startsWith( "TIME" ) ) {
+              v = new ValueMetaDate();
+              v.setConversionMask( "HH:mm:ss.SSS" );
+            } else if ( field[1].toUpperCase().startsWith( "NUMBER" ) || field[1].toUpperCase().startsWith( "FLOAT" ) ) {
+              v = new ValueMetaNumber();
               v.setConversionMask( "#.#" );
-              break;
-          }
+            } else {
+              v = new ValueMetaString();
+              v.setLength( -1 );
+            }
 
-          int fieldIndex = data.fieldnrs.get( data.dbFields.getFieldNames()[i] );
-          Object valueData = null;
-          if ( fieldIndex > 0 ) {
-            valueData = v.convertData( rowMeta.getValueMeta( fieldIndex ), r[fieldIndex] );
+            int fieldIndex = -1;
+            if ( data.fieldnrs.get( data.dbFields.get( i )[0] ) != null ) {
+              fieldIndex = data.fieldnrs.get( data.dbFields.get( i )[0] );
+            }
+            Object valueData = null;
+            if ( fieldIndex >= 0 ) {
+              valueData = v.convertData( rowMeta.getValueMeta( fieldIndex ), r[fieldIndex] );
+            } else if ( meta.isErrorColumnMismatch() ) {
+              throw new KettleException( "Error column mismatch: Database field " + data.dbFields.get( i )[0] + " not found on stream." );
+            }
+            writeField( v, valueData, data.binaryNullValue );
           }
-          writeField( v, valueData, data.binaryNullValue );
         }
+        data.writer.write( data.binaryNewline );
+      } else {
+        int jsonField = data.fieldnrs.get( "json" );
+        data.writer.write( data.outputRowMeta.getString( r, jsonField ).getBytes() );
         data.writer.write( data.binaryNewline );
       }
 
-      incrementLinesOutput();
+      data.outputCount++;
 
       // flush every 4k lines
       // if (linesOutput>0 && (linesOutput&0xFFF)==0) data.writer.flush();
@@ -216,9 +322,9 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     if ( v.isString() ) {
       if ( v.isStorageBinaryString() && v.getTrimType() == ValueMetaInterface.TRIM_TYPE_NONE && v.getLength() < 0
         && Const.isEmpty( v.getStringEncoding() ) ) {
-        return ( byte[] ) valueData;
+        return (byte[]) valueData;
       } else {
-        String svalue = ( valueData instanceof String ) ? ( String ) valueData : v.getString( valueData );
+        String svalue = ( valueData instanceof String ) ? (String) valueData : v.getString( valueData );
 
         // trim or cut to size if needed.
         //
@@ -233,7 +339,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     int length = v.getLength();
 
     if ( string == null ) {
-      return new byte[] {};
+      return new byte[]{};
     }
 
     if ( length > -1 && length < string.length() ) {
@@ -318,8 +424,8 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         boolean writeEnclosures = false;
 
         if ( v.isString() ) {
-          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure, data.escapeCharacters )
-            ) {
+          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure,
+                data.escapeCharacters ) ) {
             writeEnclosures = true;
           }
         }
@@ -335,10 +441,13 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
           // Skip the enclosures, escape them instead...
           int from = 0;
           for ( Integer enclosure : enclosures ) {
+            // Minus one to write the escape before the enclosure
             int position = enclosure;
-            data.writer.write( str, from, position + data.escapeCharacters.length - from );
+            data.writer.write( str, from, position - from );
             data.writer.write( data.escapeCharacters ); // write enclosure a second time
-            from = position + data.escapeCharacters.length;
+            //data.writer.write( str, position, 1 );
+            from = position;
+
           }
           if ( from < str.length ) {
             data.writer.write( str, from, str.length - from );
@@ -356,23 +465,31 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
 
   private List<Integer> getEnclosurePositions( byte[] str ) {
     List<Integer> positions = null;
-    if ( data.binaryEnclosure != null && data.binaryEnclosure.length > 0 ) {
-      // +1 because otherwise we will not find it at the end
-      for ( int i = 0, len = str.length - data.binaryEnclosure.length + 1; i < len; i++ ) {
-        // verify if on position i there is an enclosure
-        //
-        boolean found = true;
-        for ( int x = 0; found && x < data.binaryEnclosure.length; x++ ) {
-          if ( str[i + x] != data.binaryEnclosure[x] || str[i + x] != data.escapeCharacters[x] ) {
+    // +1 because otherwise we will not find it at the end
+    for ( int i = 0, len = str.length; i < len; i++ ) {
+      // verify if on position i there is an enclosure
+      //
+      boolean found = true;
+      for ( int x = 0; found && x < data.binaryEnclosure.length; x++ ) {
+        if ( str[i + x] != data.binaryEnclosure[x] ) {
+          found = false;
+        }
+      }
+
+      if ( !found ) {
+        found = true;
+        for ( int x = 0; found && x < data.escapeCharacters.length; x++ ) {
+          if ( str[i + x] != data.escapeCharacters[x] ) {
             found = false;
           }
         }
-        if ( found ) {
-          if ( positions == null ) {
-            positions = new ArrayList<>();
-          }
-          positions.add( i );
+      }
+
+      if ( found ) {
+        if ( positions == null ) {
+          positions = new ArrayList<>();
         }
+        positions.add( i );
       }
     }
     return positions;
@@ -411,6 +528,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         data.fos = getOutputStream( filename, getTransMeta(), true );
       } else {
         data.fos = getOutputStream( filename, getTransMeta(), false );
+        data.previouslyOpenedFiles.add( filename );
       }
 
       data.out = compressionProvider.createOutputStream( data.fos );
@@ -470,8 +588,8 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
   }
 
   public boolean init( StepMetaInterface smi, StepDataInterface sdi ) {
-    meta = ( SnowflakeBulkLoaderMeta ) smi;
-    data = ( SnowflakeBulkLoaderData ) sdi;
+    meta = (SnowflakeBulkLoaderMeta) smi;
+    data = (SnowflakeBulkLoaderData) sdi;
 
     if ( super.init( smi, sdi ) ) {
       data.splitnr = 0;
@@ -507,10 +625,10 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
 
   private void initBinaryDataFields() throws KettleException {
     try {
-      data.binarySeparator = new byte[] {};
-      data.binaryEnclosure = new byte[] {};
-      data.binaryNewline = new byte[] {};
-      data.escapeCharacters = new byte[] {};
+      data.binarySeparator = new byte[]{};
+      data.binaryEnclosure = new byte[]{};
+      data.binaryNewline = new byte[]{};
+      data.escapeCharacters = new byte[]{};
 
       data.binarySeparator = environmentSubstitute( SnowflakeBulkLoaderMeta.CSV_DELIMITER ).getBytes( "UTF-8" );
       data.binaryEnclosure = environmentSubstitute( SnowflakeBulkLoaderMeta.ENCLOSURE ).getBytes( "UTF-8" );
@@ -524,8 +642,8 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
   }
 
   public void dispose( StepMetaInterface smi, StepDataInterface sdi ) {
-    meta = ( SnowflakeBulkLoaderMeta ) smi;
-    data = ( SnowflakeBulkLoaderData ) sdi;
+    meta = (SnowflakeBulkLoaderMeta) smi;
+    data = (SnowflakeBulkLoaderData) sdi;
 
     if ( data.oneFileOpened ) {
       closeFile();
@@ -538,6 +656,24 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     } catch ( Exception e ) {
       logError( "Unexpected error closing file", e );
       setErrors( 1 );
+    }
+
+    try {
+      if ( data.db != null ) {
+        data.db.disconnect();
+      }
+    } catch ( Exception e ) {
+      logError( "Unable to close connection to database", e );
+      setErrors( 1 );
+    }
+
+    for ( String filename : data.previouslyOpenedFiles ) {
+      try {
+        KettleVFS.getFileObject( filename ).delete();
+        logDetailed( "Deleted temp file " + filename );
+      } catch ( Exception ex ) {
+        logMinimal( "Unable to delete temp file", ex );
+      }
     }
 
     super.dispose( smi, sdi );

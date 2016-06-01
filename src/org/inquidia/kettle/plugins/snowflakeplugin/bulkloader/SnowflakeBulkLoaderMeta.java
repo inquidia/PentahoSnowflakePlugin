@@ -25,11 +25,13 @@ import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.exception.KettleFileException;
 import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.injection.Injection;
 import org.pentaho.di.core.injection.InjectionDeep;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.di.core.vfs.KettleVFS;
 import org.pentaho.di.core.xml.XMLHandler;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.repository.ObjectId;
@@ -37,7 +39,11 @@ import org.pentaho.di.repository.Repository;
 import org.pentaho.di.shared.SharedObjectInterface;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
-import org.pentaho.di.trans.step.*;
+import org.pentaho.di.trans.step.BaseStepMeta;
+import org.pentaho.di.trans.step.StepDataInterface;
+import org.pentaho.di.trans.step.StepInterface;
+import org.pentaho.di.trans.step.StepMeta;
+import org.pentaho.di.trans.step.StepMetaInterface;
 import org.pentaho.metastore.api.IMetaStore;
 import org.w3c.dom.Node;
 
@@ -51,7 +57,7 @@ import java.util.List;
  * and read this metadata in ktr files and on a repository.
  */
 @SuppressWarnings( "WeakerAccess" )
-@Step( id = "SnowflakeBulkeLoader", image = "snowflake.png", name = "Step.Name", description = "Step.Description",
+@Step( id = "SnowflakeBulkeLoader", image = "SBL.svg", name = "Step.Name", description = "Step.Description",
   categoryDescription = "Category.Description",
   i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
   documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Parquet-Output",
@@ -70,9 +76,8 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   private static final String WORK_DIRECTORY = "work_directory";
   private static final String ON_ERROR = "on_error";
   private static final String ERROR_LIMIT = "error_limit";
-  private static final String SIZE_LIMIT = "size_limit";
+  private static final String SPLIT_SIZE = "split_size";
   private static final String REMOVE_FILES = "remove_files";
-  private static final String VALIDATION_MODE = "validation_mode";
   private static final String DATA_TYPE = "data_type";
   private static final String TRIM_WHITESPACE = "trim_whitespace";
   private static final String NULL_IF = "null_if";
@@ -95,9 +100,8 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   public static final String CSV_RECORD_DELIMITER = "\n";
   public static final String CSV_ESCAPE_CHAR = "\\";
   public static final String ENCLOSURE = "\"";
-  public static final int SPLIT_EVERY = 20000;
   public static final String DATE_FORMAT_STRING = "yyyy-MM-dd";
-  public static final String TIMESTAMP_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss.SSS";
+  public static final String TIMESTAMP_FORMAT_STRING = "YYYY-MM-DD HH24:MI:SS.FF3";
 
   /**
    * The valid location type codes {@value}
@@ -117,20 +121,16 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   public static final int ON_ERROR_ABORT = 3;
 
   /**
-   * The valid validation mode codes {@value}
-   */
-  public static final String[] VALIDATION_MODE_CODES = { "off", "return_rows", "return_errors", "return_all_errors" };
-  public static final int VALIDATION_MODE_OFF = 0;
-  public static final int VALIDATION_MODE_RETURN_ROWS = 1;
-  public static final int VALIDATION_MODE_RETURN_ERRORS = 2;
-  public static final int VALIDATION_MODE_RETURN_ALL_ERRORS = 3;
-
-  /**
    * The valid data type codes {@value}
    */
   public static final String[] DATA_TYPE_CODES = { "csv", "json" };
   public static final int DATA_TYPE_CSV = 0;
   public static final int DATA_TYPE_JSON = 1;
+
+  /**
+   * The date appended to the filenames
+   */
+  private String fileDate;
 
   /**
    * The database connection to use
@@ -181,10 +181,10 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   private String errorLimit;
 
   /**
-   * The maximum amount of data in bytes to load
+   * The size to split the data at to enable faster bulk loading
    */
-  @Injection( name = "SIZE_LIMIT" )
-  private String sizeLimit;
+  @Injection( name = "SPLIT_SIZE" )
+  private String splitSize;
 
   /**
    * Should the files loaded to the staging location be removed
@@ -193,10 +193,10 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   private boolean removeFiles;
 
   /**
-   * The validation mode to use (Off, Return 100 Rows, Return Errors, Return All Errors)
+   * The target step for bulk loader output
    */
-  @Injection( name = "VALIDATION_MODE" )
-  private String validationMode;
+  @Injection( name = "OUTPUT_TARGET_STEP" )
+  private String outputTargetStep;
 
   /**
    * The data type of the data (CSV, JSON)
@@ -469,19 +469,19 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   }
 
   /**
-   * @return The limit in bytes for the amount of data Snowflake should load.
+   * @return The number of rows at which the files should be split
    */
-  public String getSizeLimit() {
-    return sizeLimit;
+  public String getSplitSize() {
+    return splitSize;
   }
 
   /**
-   * Set the limit for the amount of data Snowflake should load.
+   * Set the number of rows at which to split files
    *
-   * @param sizeLimit The limit specified in bytes
+   * @param splitSize The size to split at in number of rows
    */
-  public void setSizeLimit( String sizeLimit ) {
-    this.sizeLimit = sizeLimit;
+  public void setSplitSize( String splitSize ) {
+    this.splitSize = splitSize;
   }
 
   /**
@@ -501,50 +501,18 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   }
 
   /**
-   * @return The validation mode code to use from @VALIDATION_MODE_CODES
+   * @return The step to direct the output data to.
    */
-  public String getValidationMode() {
-    return validationMode;
+  public String getOutputTargetStep() {
+    return outputTargetStep;
   }
 
   /**
-   * Set the validation mode to use
-   *
-   * @param validationMode The validation mode code from @VALIDATION_MODE_CODES
-   * @throws KettleException
+   * Set the step to direct bulk loader output to.
+   * @param outputTargetStep The step name
    */
-  @SuppressWarnings( "unused" )
-  public void setValidationMode( String validationMode ) throws KettleException {
-    for ( String VALIDATION_MODE_CODE : VALIDATION_MODE_CODES ) {
-      if ( VALIDATION_MODE_CODE.equals( validationMode ) ) {
-        this.validationMode = validationMode;
-        return;
-      }
-    }
-
-    //No matching code
-    throw new KettleException( "Invalid validation mode " + validationMode );
-  }
-
-  /**
-   * @return The ID of the validation mode being used
-   */
-  public int getValidationModId() {
-    for ( int i = 0; i < VALIDATION_MODE_CODES.length; i++ ) {
-      if ( VALIDATION_MODE_CODES[i].equals( validationMode ) ) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  /**
-   * Set the validation mode
-   *
-   * @param validationModId The ID of the validation mode being used
-   */
-  public void setValidationModeById( int validationModId ) {
-    validationMode = VALIDATION_MODE_CODES[validationModId];
+  public void setOutputTargetStep( String outputTargetStep ) {
+    this.outputTargetStep = outputTargetStep;
   }
 
   /**
@@ -768,9 +736,17 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   }
 
   /**
+   * Get the file date that is appended in the file names
+   * @return The file date that is appended in the file names
+   */
+  public String getFileDate() {
+    return fileDate;
+  }
+
+  /**
    * Loads the step metadata from the XML ktr file
    *
-   * @param stepNode The node in the XML
+   * @param stepNode  The node in the XML
    * @param databases The list of databases
    * @param metaStore The metastore
    * @throws KettleXMLException
@@ -795,13 +771,13 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
    * @return A copy of the step
    */
   public Object clone() {
-    SnowflakeBulkLoaderMeta retval = ( SnowflakeBulkLoaderMeta ) super.clone();
+    SnowflakeBulkLoaderMeta retval = (SnowflakeBulkLoaderMeta) super.clone();
     int nrfields = snowflakeBulkLoaderFields.length;
 
     retval.allocate( nrfields );
 
     for ( int i = 0; i < nrfields; i++ ) {
-      retval.snowflakeBulkLoaderFields[i] = ( SnowflakeBulkLoaderField ) snowflakeBulkLoaderFields[i].clone();
+      retval.snowflakeBulkLoaderFields[i] = (SnowflakeBulkLoaderField) snowflakeBulkLoaderFields[i].clone();
     }
 
     return retval;
@@ -824,9 +800,8 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
       workDirectory = XMLHandler.getTagValue( stepNode, WORK_DIRECTORY );
       onError = XMLHandler.getTagValue( stepNode, ON_ERROR );
       errorLimit = XMLHandler.getTagValue( stepNode, ERROR_LIMIT );
-      sizeLimit = XMLHandler.getTagValue( stepNode, SIZE_LIMIT );
+      splitSize = XMLHandler.getTagValue( stepNode, SPLIT_SIZE );
       removeFiles = "Y".equalsIgnoreCase( XMLHandler.getTagValue( stepNode, REMOVE_FILES ) );
-      validationMode = XMLHandler.getTagValue( stepNode, VALIDATION_MODE );
 
       dataType = XMLHandler.getTagValue( stepNode, DATA_TYPE );
       trimWhitespace = "Y".equalsIgnoreCase( XMLHandler.getTagValue( stepNode, TRIM_WHITESPACE ) );
@@ -865,7 +840,6 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     workDirectory = "${java.io.tmpdir}";
     onError = ON_ERROR_CODES[ON_ERROR_ABORT];
     removeFiles = true;
-    validationMode = VALIDATION_MODE_CODES[VALIDATION_MODE_OFF];
 
     dataType = DATA_TYPE_CODES[DATA_TYPE_CSV];
     trimWhitespace = false;
@@ -874,6 +848,7 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     ignoreUtf8 = false;
     allowDuplicateElements = false;
     enableOctal = false;
+    splitSize = "20000";
 
     specifyFields = false;
   }
@@ -881,10 +856,10 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   /**
    * Builds a filename for a temporary file  The filename is in tableName_date_time_stepnr_partnr_splitnr.gz format
    *
-   * @param space   The variables currently set
+   * @param space       The variables currently set
    * @param stepNumber  The step number.  Used when multiple copies of the step are started.
    * @param partNumber  The partition number.  Used when the transformation is executed clustered, the number of the
-   *                partition.
+   *                    partition.
    * @param splitNumber The split number.  Used when the file is split into multiple chunks.
    * @return The filename to use
    */
@@ -896,22 +871,30 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     String realWorkDirectory = space.environmentSubstitute( workDirectory );
 
     //Files are always gzipped
-    String extension = "gz";
+    String extension = ".gz";
 
-    StringBuilder retval = new StringBuilder( realWorkDirectory ).append( targetTable ).append( "_" );
+    StringBuilder returnValue = new StringBuilder( realWorkDirectory );
+    if ( !realWorkDirectory.endsWith( "/" ) && !realWorkDirectory.endsWith( "\\" ) ) {
+      returnValue.append( Const.FILE_SEPARATOR );
+    }
 
-    Date now = new Date();
+    returnValue.append( targetTable ).append( "_" );
 
-    daf.applyPattern( "yyyyMMdd_HHmmss" );
-    String dt = daf.format( now );
-    retval.append( dt ).append( "_" );
+    if ( fileDate == null ) {
 
-    retval.append( stepNumber ).append( "_" );
-    retval.append( partNumber ).append( "_" );
-    retval.append( splitNumber );
-    retval.append( extension );
+      Date now = new Date();
 
-    return retval.toString();
+      daf.applyPattern( "yyyyMMdd_HHmmss" );
+      fileDate = daf.format( now );
+    }
+    returnValue.append( fileDate ).append( "_" );
+
+    returnValue.append( stepNumber ).append( "_" );
+    returnValue.append( partNumber ).append( "_" );
+    returnValue.append( splitNumber );
+    returnValue.append( extension );
+
+    return returnValue.toString();
   }
 
   /**
@@ -931,9 +914,8 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     returnValue.append( "    " ).append( XMLHandler.addTagValue( WORK_DIRECTORY, workDirectory ) );
     returnValue.append( "    " ).append( XMLHandler.addTagValue( ON_ERROR, onError ) );
     returnValue.append( "    " ).append( XMLHandler.addTagValue( ERROR_LIMIT, errorLimit ) );
-    returnValue.append( "    " ).append( XMLHandler.addTagValue( SIZE_LIMIT, sizeLimit ) );
+    returnValue.append( "    " ).append( XMLHandler.addTagValue( SPLIT_SIZE, splitSize ) );
     returnValue.append( "    " ).append( XMLHandler.addTagValue( REMOVE_FILES, removeFiles ) );
-    returnValue.append( "    " ).append( XMLHandler.addTagValue( VALIDATION_MODE, validationMode ) );
 
     returnValue.append( "    " ).append( XMLHandler.addTagValue( DATA_TYPE, dataType ) );
     returnValue.append( "    " ).append( XMLHandler.addTagValue( TRIM_WHITESPACE, trimWhitespace ) );
@@ -964,9 +946,9 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   /**
    * Read the metadata for the step from the repository
    *
-   * @param rep The repository
+   * @param rep       The repository
    * @param metaStore The metastore
-   * @param id_step The ID of the step
+   * @param id_step   The ID of the step
    * @param databases The list of the databases
    * @throws KettleException
    */
@@ -981,9 +963,8 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
       workDirectory = rep.getStepAttributeString( id_step, WORK_DIRECTORY );
       onError = rep.getStepAttributeString( id_step, ON_ERROR );
       errorLimit = rep.getStepAttributeString( id_step, ERROR_LIMIT );
-      sizeLimit = rep.getStepAttributeString( id_step, SIZE_LIMIT );
+      splitSize = rep.getStepAttributeString( id_step, SPLIT_SIZE );
       removeFiles = rep.getStepAttributeBoolean( id_step, REMOVE_FILES );
-      validationMode = rep.getStepAttributeString( id_step, VALIDATION_MODE );
 
       dataType = rep.getStepAttributeString( id_step, DATA_TYPE );
       trimWhitespace = rep.getStepAttributeBoolean( id_step, TRIM_WHITESPACE );
@@ -1017,10 +998,10 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   /**
    * Saves the metadata for the step to a repository.
    *
-   * @param rep The repository
-   * @param metaStore The mestatore
+   * @param rep               The repository
+   * @param metaStore         The mestatore
    * @param id_transformation The ID of the transformation
-   * @param id_step The ID of the step
+   * @param id_step           The ID of the step
    * @throws KettleException
    */
   public void saveRep( Repository rep, IMetaStore metaStore, ObjectId id_transformation, ObjectId id_step )
@@ -1034,9 +1015,8 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
       rep.saveStepAttribute( id_transformation, id_step, WORK_DIRECTORY, workDirectory );
       rep.saveStepAttribute( id_transformation, id_step, ON_ERROR, onError );
       rep.saveStepAttribute( id_transformation, id_step, ERROR_LIMIT, errorLimit );
-      rep.saveStepAttribute( id_transformation, id_step, SIZE_LIMIT, sizeLimit );
+      rep.saveStepAttribute( id_transformation, id_step, SPLIT_SIZE, splitSize );
       rep.saveStepAttribute( id_transformation, id_step, REMOVE_FILES, removeFiles );
-      rep.saveStepAttribute( id_transformation, id_step, VALIDATION_MODE, validationMode );
       rep.saveStepAttribute( id_transformation, id_step, DATA_TYPE, dataType );
       rep.saveStepAttribute( id_transformation, id_step, TRIM_WHITESPACE, trimWhitespace );
       rep.saveStepAttribute( id_transformation, id_step, NULL_IF, nullIf );
@@ -1064,7 +1044,6 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
                      Repository repository, IMetaStore metaStore ) {
     CheckResult cr;
 
-    //TODO: Go through this section and add the i18n translations
     // Check output fields
     if ( prev != null && prev.size() > 0 ) {
       cr =
@@ -1139,29 +1118,28 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
 
           // Check if this table exists...
           if ( db.checkTableExists( schemaTable ) ) {
-            logBasic( db.getTableFields( schemaTable ).getFieldNames()[0] );
             return db.getTableFields( schemaTable );
           } else {
-            throw new KettleException( BaseMessages.getString( PKG, "TableOutputMeta.Exception.TableNotFound" ) );
+            throw new KettleException( BaseMessages.getString( PKG, "SnowflakeBulkLoaderMeta.Exception.TableNotFound" ) );
           }
         } else {
-          throw new KettleException( BaseMessages.getString( PKG, "TableOutputMeta.Exception.TableNotSpecified" ) );
+          throw new KettleException( BaseMessages.getString( PKG, "SnowflakeBulkLoaderMeta.Exception.TableNotSpecified" ) );
         }
       } catch ( Exception e ) {
         throw new KettleException(
-          BaseMessages.getString( PKG, "TableOutputMeta.Exception.ErrorGettingFields" ), e );
+          BaseMessages.getString( PKG, "SnowflakeBulkLoaderMeta.Exception.ErrorGettingFields" ), e );
       } finally {
         db.disconnect();
       }
     } else {
-      throw new KettleException( BaseMessages.getString( PKG, "TableOutputMeta.Exception.ConnectionNotDefined" ) );
+      throw new KettleException( BaseMessages.getString( PKG, "SnowflakeBulkLoaderMeta.Exception.ConnectionNotDefined" ) );
     }
 
   }
 
   public DatabaseMeta[] getUsedDatabaseConnections() {
     if ( databaseMeta != null ) {
-      return new DatabaseMeta[] { databaseMeta };
+      return new DatabaseMeta[]{ databaseMeta };
     } else {
       return super.getUsedDatabaseConnections();
     }
@@ -1195,100 +1173,96 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     return null;
   }
 
-  public String getCopyStatement( VariableSpace space, List<String> filenames ) {
-    StringBuilder retval = new StringBuilder();
-    retval.append( "COPY INTO " );
+  public String getCopyStatement( VariableSpace space, List<String> filenames ) throws KettleFileException {
+    StringBuilder returnValue = new StringBuilder();
+    returnValue.append( "COPY INTO " );
 
     //Schema
     if ( !Const.isEmpty( space.environmentSubstitute( targetSchema ) ) ) {
-      retval.append( space.environmentSubstitute( targetSchema ) ).append( "." );
+      returnValue.append( space.environmentSubstitute( targetSchema ) ).append( "." );
     }
 
     //Table
-    retval.append( space.environmentSubstitute( targetTable ) ).append( " " );
+    returnValue.append( space.environmentSubstitute( targetTable ) ).append( " " );
 
     // Location
-    retval.append( "FROM " ).append( getStage( space ) ).append( " " );
-    retval.append( "FILES = (" );
+    returnValue.append( "FROM " ).append( getStage( space ) ).append( "/ " );
+    returnValue.append( "FILES = (" );
     boolean first = true;
     for ( String filename : filenames ) {
+      String shortFile = KettleVFS.getFileObject( filename ).getName().getBaseName();
       if ( first ) {
-        retval.append( "'" );
+        returnValue.append( "'" );
         first = false;
       } else {
-        retval.append( ",'" );
+        returnValue.append( ",'" );
       }
-      retval.append( filename ).append( "' " );
+      returnValue.append( shortFile ).append( "' " );
     }
-    retval.append( ") " );
+    returnValue.append( ") " );
 
     // FILE FORMAT
-    retval.append( "FILE_FORMAT = ( TYPE = " );
+    returnValue.append( "FILE_FORMAT = ( TYPE = " );
 
     // CSV
     if ( dataType.equals( DATA_TYPE_CODES[DATA_TYPE_CSV] ) ) {
-      retval.append( "'CSV' FIELD_DELIMITER = ',' RECORD_DELIMITER = '\\n' ESCAPE = '\\' ESCAPE_UNENCLOSED_FIELD = " +
-        "'\\' " );
-      retval.append( "SKIP_HEADER = 0 DATE_FORMAT = '" ).append( DATE_FORMAT_STRING ).append( "' " );
-      retval.append( "TIMESTAMP_FORMAT = '" ).append( TIMESTAMP_FORMAT_STRING ).append( "' " );
-      retval.append( "TRIM_SPACE = " ).append( trimWhitespace );
+      returnValue.append( "'CSV' FIELD_DELIMITER = ',' RECORD_DELIMITER = '\\n' ESCAPE = '\\\\' " );
+      returnValue.append( "ESCAPE_UNENCLOSED_FIELD = '\\\\' FIELD_OPTIONALLY_ENCLOSED_BY='\"' " );
+      returnValue.append( "SKIP_HEADER = 0 DATE_FORMAT = '" ).append( DATE_FORMAT_STRING ).append( "' " );
+      returnValue.append( "TIMESTAMP_FORMAT = '" ).append( TIMESTAMP_FORMAT_STRING ).append( "' " );
+      returnValue.append( "TRIM_SPACE = " ).append( trimWhitespace ).append( " " );
       if ( !Const.isEmpty( nullIf ) ) {
-        retval.append( "NULL_IF = (" );
+        returnValue.append( "NULL_IF = (" );
         String[] nullIfStrings = space.environmentSubstitute( nullIf ).split( "," );
         boolean firstNullIf = true;
         for ( String nullIfString : nullIfStrings ) {
           nullIfString = nullIfString.replaceAll( "'", "''" );
           if ( firstNullIf ) {
             firstNullIf = false;
-            retval.append( "'" );
+            returnValue.append( "'" );
           } else {
-            retval.append( ", '" );
+            returnValue.append( ", '" );
           }
-          retval.append( nullIfString ).append( "'" );
+          returnValue.append( nullIfString ).append( "'" );
         }
-        retval.append( " ) " );
+        returnValue.append( " ) " );
       }
-      retval.append( "ERROR_ON_COLUMN_COUNT_MISMATCH = '" ).append( errorColumnMismatch ).append( "' " );
-      retval.append( "COMPRESSION = 'GZIP' " );
+      returnValue.append( "ERROR_ON_COLUMN_COUNT_MISMATCH = " ).append( errorColumnMismatch ).append( " " );
+      returnValue.append( "COMPRESSION = 'GZIP' " );
 
+    } else if ( dataType.equals( DATA_TYPE_CODES[DATA_TYPE_JSON] ) ) {
+      returnValue.append( "'JSON' COMPRESSION = 'GZIP' STRIP_OUTER_ARRAY = FALSE " );
+      returnValue.append( "ENABLE_OCTAL = " ).append( enableOctal ).append( " " );
+      returnValue.append( "ALLOW_DUPLICATE = " ).append( allowDuplicateElements ).append( " " );
+      returnValue.append( "STRIP_NULL_VALUES = " ).append( stripNull ).append( " " );
+      returnValue.append( "IGNORE_UTF8_ERRORS = " ).append( ignoreUtf8 ).append( " " );
     }
-    retval.append( ") " );
+    returnValue.append( ") " );
 
-    retval.append( "ON_ERROR = " );
+    returnValue.append( "ON_ERROR = " );
     if ( onError.equals( ON_ERROR_CODES[ON_ERROR_ABORT] ) ) {
-      retval.append( "'ABORT_STATEMENT' " );
+      returnValue.append( "'ABORT_STATEMENT' " );
     } else if ( onError.equals( ON_ERROR_CODES[ON_ERROR_CONTINUE] ) ) {
-      retval.append( "'CONTINUE' " );
+      returnValue.append( "'CONTINUE' " );
     } else if ( onError.equals( ON_ERROR_CODES[ON_ERROR_SKIP_FILE] )
       || onError.equals( ON_ERROR_CODES[ON_ERROR_SKIP_FILE_PERCENT] ) ) {
       if ( Const.toDouble( space.environmentSubstitute( errorLimit ), 0 ) <= 0 ) {
-        retval.append( "'SKIP_FILE' " );
+        returnValue.append( "'SKIP_FILE' " );
       } else {
-        retval.append( "'SKIP_FILE_" ).append( Const.toDouble( space.environmentSubstitute( errorLimit ), 0 ) );
+        returnValue.append( "'SKIP_FILE_" ).append( Const.toInt( space.environmentSubstitute( errorLimit ), 0 ) );
       }
       if ( onError.equals( ON_ERROR_CODES[ON_ERROR_SKIP_FILE_PERCENT] ) ) {
-        retval.append( "%' " );
+        returnValue.append( "%' " );
       } else {
-        retval.append( "' " );
+        returnValue.append( "' " );
       }
     }
 
-    if ( Const.toInt( space.environmentSubstitute( sizeLimit ), 0 ) > 0 ) {
-      retval.append( "SIZE_LIMIT = " ).append( Const.toInt( space.environmentSubstitute( sizeLimit ), 0 ) ).append( "" +
-        " " );
-    }
+    returnValue.append( "PURGE = " ).append( removeFiles ).append( " " );
 
-    retval.append( "PURGE = " ).append( removeFiles ).append( " " );
+    returnValue.append( ";" );
 
-    if ( validationMode.equals( VALIDATION_MODE_CODES[VALIDATION_MODE_RETURN_ALL_ERRORS] ) ) {
-      retval.append( "VALIDATION_MODE = 'RETURN_ALL_ERRORS' " );
-    } else if ( validationMode.equals( VALIDATION_MODE_CODES[VALIDATION_MODE_RETURN_ERRORS] ) ) {
-      retval.append( "VALIDATION_MODE = 'RETURN_ERRORS' " );
-    } else if ( validationMode.equals( VALIDATION_MODE_CODES[VALIDATION_MODE_RETURN_ROWS] ) ) {
-      retval.append( "VALIDATION_MODE = 'RETURN_100_ROWS' " );
-    }
-
-    return retval.toString();
+    return returnValue.toString();
   }
 
 }
