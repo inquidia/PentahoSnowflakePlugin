@@ -26,13 +26,7 @@ import org.pentaho.di.trans.step.BaseStepData;
 import org.pentaho.di.trans.step.StepDataInterface;
 
 import java.io.OutputStream;
-import java.text.DateFormatSymbols;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.text.NumberFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,39 +36,36 @@ import java.util.Map;
 @SuppressWarnings( "WeakerAccess" )
 public class SnowflakeBulkLoaderData extends BaseStepData implements StepDataInterface {
 
+  // When the meta.splitSize is exceeded the file being written is closed and a new file is created.  These new files
+  // are called splits.  Every time a new file is created this is incremented so it will contain the latest split number
   public int splitnr;
 
+  // Maps table fields to the location of the corresponding field on the input stream.
   public Map<String, Integer> fieldnrs;
 
+  // The database being used
   public Database db;
   public DatabaseMeta databaseMeta;
 
+  // A list of table fields mapped to their data type.  String[0] is the field name, String[1] is the Snowflake
+  // data type
   public ArrayList<String[]> dbFields;
 
+  // The number of rows output to temp files.  Incremented every time a new row is written.
   public int outputCount;
 
 
-  public NumberFormat nf;
-  public DecimalFormat df;
-  public DecimalFormatSymbols dfs;
-
-  public SimpleDateFormat daf;
-  public DateFormatSymbols dafs;
-
+  // The output stream being used to write files
   public CompressionOutputStream out;
 
   public OutputStream writer;
 
-  public DecimalFormat defaultDecimalFormat;
-  public DecimalFormatSymbols defaultDecimalFormatSymbols;
-
-  public SimpleDateFormat defaultDateFormat;
-  public DateFormatSymbols defaultDateFormatSymbols;
-
   public OutputStream fos;
 
+  // The metadata about the output row
   public RowMetaInterface outputRowMeta;
 
+  // Byte arrays for constant characters put into output files.
   public byte[] binarySeparator;
   public byte[] binaryEnclosure;
   public byte[] escapeCharacters;
@@ -82,37 +73,22 @@ public class SnowflakeBulkLoaderData extends BaseStepData implements StepDataInt
 
   public byte[] binaryNullValue;
 
+  // Indicates that at least one file has been opened by the step
   public boolean oneFileOpened;
 
+  // A list of files that have been previous created by the step
   public List<String> previouslyOpenedFiles;
 
-  public int fileNameFieldIndex;
-
-  public Map<String, OutputStream> fileWriterMap;
-
+  /**
+   * Sets the default values
+   */
   public SnowflakeBulkLoaderData() {
     super();
 
-    nf = NumberFormat.getInstance();
-    df = (DecimalFormat) nf;
-    dfs = new DecimalFormatSymbols();
-
-    daf = new SimpleDateFormat();
-    dafs = new DateFormatSymbols();
-
-    defaultDecimalFormat = (DecimalFormat) NumberFormat.getInstance();
-    defaultDecimalFormatSymbols = new DecimalFormatSymbols();
-
-    defaultDateFormat = new SimpleDateFormat();
-    defaultDateFormatSymbols = new DateFormatSymbols();
-
     previouslyOpenedFiles = new ArrayList<>();
-    fileNameFieldIndex = -1;
 
     oneFileOpened = false;
     outputCount = 0;
-
-    fileWriterMap = new HashMap<>();
 
     dbFields = null;
     db = null;

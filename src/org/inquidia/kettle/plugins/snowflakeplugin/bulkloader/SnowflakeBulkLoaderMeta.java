@@ -57,7 +57,7 @@ import java.util.List;
  * and read this metadata in ktr files and on a repository.
  */
 @SuppressWarnings( "WeakerAccess" )
-@Step( id = "SnowflakeBulkeLoader", image = "SBL.svg", name = "Step.Name", description = "Step.Description",
+@Step( id = "SnowflakeBulkLoader", image = "SBL.svg", name = "Step.Name", description = "Step.Description",
   categoryDescription = "Category.Description",
   i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
   documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Parquet-Output",
@@ -150,7 +150,7 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   private String targetTable;
 
   /**
-   * The location type (User, Table, Internal stage)
+   * The location type (user, table, internal_stage)
    */
   @Injection( name = "LOCATION_TYPE" )
   private String locationType;
@@ -168,7 +168,7 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   private String workDirectory;
 
   /**
-   * What to do when an error is encountered (Continue, Skip File, Skip File Percent, Abort)
+   * What to do when an error is encountered (continue, skip_file, skip_file_percent, abort)
    */
   @Injection( name = "ON_ERROR" )
   private String onError;
@@ -199,7 +199,7 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
   private String outputTargetStep;
 
   /**
-   * The data type of the data (CSV, JSON)
+   * The data type of the data (csv, json)
    */
   @Injection( name = "DATA_TYPE" )
   private String dataType;
@@ -541,6 +541,11 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     throw new KettleException( "Invalid data type " + dataType );
   }
 
+  /**
+   * Gets the data type ID, which is equivalent to the location of the data type code within the
+   * (DATA_TYPE_CODES) array
+   * @return The ID of the data type
+   */
   public int getDataTypeId() {
     for ( int i = 0; i < DATA_TYPE_CODES.length; i++ ) {
       if ( DATA_TYPE_CODES[i].equals( dataType ) ) {
@@ -550,6 +555,11 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     return -1;
   }
 
+  /**
+   * Takes the ID of the data type and sets the data type code to the equivalent location within the
+   * DATA_TYPE_CODES array
+   * @param dataTypeId The ID of the data type
+   */
   public void setDataTypeById( int dataTypeId ) {
     dataType = DATA_TYPE_CODES[dataTypeId];
   }
@@ -1039,6 +1049,20 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     }
   }
 
+  /**
+   * Check the step to make sure it is valid.  This is what is run when the user presses the check transformation
+   * button in PDI
+   * @param remarks The list of remarks to add to
+   * @param transMeta The transformation metadata
+   * @param stepMeta The step metadata
+   * @param prev The metadata about the input stream
+   * @param input The input fields
+   * @param output The output fields
+   * @param info The metadata about the info stream
+   * @param space The variable space
+   * @param repository The repository
+   * @param metaStore The metastore
+   */
   public void check( List<CheckResultInterface> remarks, TransMeta transMeta, StepMeta stepMeta,
                      RowMetaInterface prev, String[] input, String[] output, RowMetaInterface info, VariableSpace space,
                      Repository repository, IMetaStore metaStore ) {
@@ -1104,6 +1128,12 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     }
   }
 
+  /**
+   * Gets a list of fields in the database table
+   * @param space The variable space
+   * @return The metadata about the fields in the table.
+   * @throws KettleException
+   */
   public RowMetaInterface getRequiredFields( VariableSpace space ) throws KettleException {
     String realTableName = space.environmentSubstitute( targetTable );
     String realSchemaName = space.environmentSubstitute( targetSchema );
@@ -1137,6 +1167,10 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
 
   }
 
+  /**
+   * Gets the list of databases used by the step
+   * @return The list of databases used by the step
+   */
   public DatabaseMeta[] getUsedDatabaseConnections() {
     if ( databaseMeta != null ) {
       return new DatabaseMeta[]{ databaseMeta };
@@ -1145,15 +1179,33 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     }
   }
 
+  /**
+   * Gets the class that actually runs this step
+   * @param stepMeta The metadata about the step
+   * @param stepDataInterface The step data
+   * @param cnr The step number
+   * @param transMeta The metadata about the transformation
+   * @param trans The transformation instance
+   * @return The class that actually runs the step
+   */
   public StepInterface getStep( StepMeta stepMeta, StepDataInterface stepDataInterface, int cnr,
                                 TransMeta transMeta, Trans trans ) {
     return new SnowflakeBulkLoader( stepMeta, stepDataInterface, cnr, transMeta, trans );
   }
 
+  /**
+   * Gets the step data
+   * @return The step data
+   */
   public StepDataInterface getStepData() {
     return new SnowflakeBulkLoaderData();
   }
 
+  /**
+   * Gets the Snowflake stage name based on the configured metadata
+   * @param space The variable space
+   * @return The Snowflake stage name to use
+   */
   public String getStage( VariableSpace space ) {
     if ( locationType.equals( LOCATION_TYPE_CODES[LOCATION_TYPE_USER] ) ) {
       return "@~/" + space.environmentSubstitute( targetTable );
@@ -1173,6 +1225,13 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     return null;
   }
 
+  /**
+   * Creates the copy statement used to load data into Snowflake
+   * @param space The variable space
+   * @param filenames A list of filenames to load
+   * @return The copy statement to load data into Snowflake
+   * @throws KettleFileException
+   */
   public String getCopyStatement( VariableSpace space, List<String> filenames ) throws KettleFileException {
     StringBuilder returnValue = new StringBuilder();
     returnValue.append( "COPY INTO " );
