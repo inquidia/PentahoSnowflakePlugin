@@ -87,17 +87,26 @@ import java.util.Set;
 public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDialogInterface {
   private static Class<?> PKG = SnowflakeBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 
+  /**
+   * The descriptions for the location type drop down
+   */
   private static final String[] LOCATION_TYPE_COMBO = new String[] {
     BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.LocationType.User" ),
     BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.LocationType.Table" ),
-    BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.LocationType.InternalStage" ) };
+    BaseMessages.getString( PKG, "Snowflake BulkLoad.Dialog.LocationType.InternalStage" ) };
 
+  /**
+   * The descriptions for the on error drop down
+   */
   private static final String[] ON_ERROR_COMBO = new String[] {
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.OnError.Continue" ),
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.OnError.SkipFile" ),
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.OnError.SkipFilePercent" ),
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.OnError.Abort" ) };
 
+  /**
+   * The descriptions for the data type drop down
+   */
   private static final String[] DATA_TYPE_COMBO = new String[] {
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.DataType.CSV" ),
           BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.DataType.JSON" ) };
@@ -504,6 +513,10 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     wStageName.setLayoutData( fdStageName );
     wStageName.setEnabled( false );
     wStageName.addFocusListener( new FocusAdapter() {
+      /**
+       * Get the list of stages for the schema, and populate the stage name drop down.
+       * @param focusEvent The event
+       */
       @Override
       public void focusGained( FocusEvent focusEvent ) {
         String stageNameText = wStageName.getText();
@@ -518,6 +531,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
             if ( !Const.isEmpty( transMeta.environmentSubstitute( wSchema.getText() ) ) ) {
               SQL += " in " + transMeta.environmentSubstitute( wSchema.getText() );
             }
+
             ResultSet resultSet = db.openQuery( SQL, null, null, ResultSet.FETCH_FORWARD, false );
             RowMetaInterface rowMeta = db.getReturnRowMeta();
             Object[] row = db.getRow( resultSet );
@@ -544,7 +558,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
 
               db.disconnect();
             } catch ( Exception ex ) {
-              //ignore
+              // Nothing more we can do
             }
           }
         }
@@ -1051,6 +1065,10 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     fdJsonField.right = new FormAttachment( 100, 0 );
     wJsonField.setLayoutData( fdJsonField );
     wJsonField.addFocusListener( new FocusAdapter() {
+      /**
+       * Get the fields from the previous step and populate the JSON Field drop down
+       * @param focusEvent The event
+       */
       @Override
       public void focusGained( FocusEvent focusEvent ) {
         try {
@@ -1069,8 +1087,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     } );
 
     //
-    // Search the fields in the background
-
+    // Search the fields in the background and populate the CSV Field mapping table's stream field column
     final Runnable runnable = new Runnable() {
       public void run() {
         StepMeta stepMeta = transMeta.findStep( stepname );
@@ -1322,6 +1339,9 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     wStepname.setFocus();
   }
 
+  /**
+   * Cancel making changes.  Do not save any of the changes and do not set the transformation as changed.
+   */
   private void cancel() {
     stepname = null;
 
@@ -1330,7 +1350,11 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     dispose();
   }
 
-  private void getInfo( SnowflakeBulkLoaderMeta sbl ) {
+  /**
+   * Save the step settings to the step metadata
+   * @param sbl The step metadata
+   */
+  private void saveInfo( SnowflakeBulkLoaderMeta sbl ) {
     sbl.setDatabaseMeta( transMeta.findDatabase( wConnection.getText() ) );
     sbl.setTargetSchema( wSchema.getText() );
     sbl.setTargetTable( wTable.getText() );
@@ -1370,6 +1394,9 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     }
   }
 
+  /**
+   * Save the step settings and close the dialog
+   */
   private void ok() {
     if ( Const.isEmpty( wStepname.getText() ) ) {
       return;
@@ -1377,11 +1404,15 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
 
     stepname = wStepname.getText(); // return value
 
-    getInfo( input );
+    saveInfo( input );
 
     dispose();
   }
 
+  /**
+   * Get the fields from the previous step and load the field mapping table with a direct mapping of input fields to
+   * table fields.
+   */
   private void get() {
     try {
       RowMetaInterface r = transMeta.getPrevStepFields( stepname );
@@ -1390,8 +1421,8 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
       }
     } catch ( KettleException ke ) {
       new ErrorDialog(
-              shell, BaseMessages.getString( PKG, "TableOutputDialog.FailedToGetFields.DialogTitle" ), BaseMessages
-              .getString( PKG, "TableOutputDialog.FailedToGetFields.DialogMessage" ), ke );
+              shell, BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.FailedToGetFields.DialogTitle" ), BaseMessages
+              .getString( PKG, "SnowflakeBulkLoader.Dialot.FailedToGetFields.DialogMessage" ), ke );
     }
 
   }
@@ -1632,6 +1663,9 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     shell.getDisplay().asyncExec( fieldLoader );
   }
 
+  /**
+   * Enable and disable fields based on selection changes
+   */
   private void setFlags() {
     /////////////////////////////////
     // On Error

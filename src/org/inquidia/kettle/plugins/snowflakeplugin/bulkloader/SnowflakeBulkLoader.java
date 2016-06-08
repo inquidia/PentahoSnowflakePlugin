@@ -70,6 +70,14 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     super( stepMeta, stepDataInterface, copyNr, transMeta, trans );
   }
 
+  /**
+   * Receive an input row from the stream, and write it to a local temp file.  After receiving the last row,
+   * run the put and copy commands to copy the data into Snowflake.
+   * @param smi The step metadata
+   * @param sdi The step data
+   * @return Was the row successfully processed.
+   * @throws KettleException
+   */
   @SuppressWarnings( "deprecation" )
   public synchronized boolean processRow( StepMetaInterface smi, StepDataInterface sdi ) throws KettleException {
     meta = (SnowflakeBulkLoaderMeta) smi;
@@ -158,6 +166,13 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     return true;
   }
 
+  /**
+   * Runs a desc table to get the fields, and field types from the database.  Uses a desc table as opposed
+   * to the select * from table limit 0 that Pentaho normally uses to get the fields and types, due to the need
+   * to handle the Time type.  The select * method through Pentaho does not give us the ability to differentiate
+   * time from timestamp.
+   * @throws KettleException
+   */
   private void getDbFields() throws KettleException {
     data.dbFields = new ArrayList<>();
     String SQL = "desc table ";
@@ -193,7 +208,15 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     }
   }
 
+  /**
+   * Runs the commands to put the data to the Snowflake stage, the copy command to load the table, and finally
+   * a commit to commit the transaction.
+   * @throws KettleDatabaseException
+   * @throws KettleFileException
+   * @throws KettleValueException
+   */
   private void loadDatabase() throws KettleDatabaseException, KettleFileException, KettleValueException {
+    boolean filesUploaded = false;
     boolean endsWithSlash = environmentSubstitute( meta.getWorkDirectory() ).endsWith( "\\" )
       || environmentSubstitute( meta.getWorkDirectory() ).endsWith( "/" );
     String SQL = "PUT 'file://" + environmentSubstitute( meta.getWorkDirectory() ).replaceAll( "\\\\", "/" )
@@ -240,7 +263,13 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
 
   }
 
-  private void writeRowToFile( RowMetaInterface rowMeta, Object[] r ) throws KettleStepException {
+  /**
+   * Writes an individual row of data to a temp file
+   * @param rowMeta The metadata about the row
+   * @param row The input row
+   * @throws KettleStepException
+   */
+  private void writeRowToFile( RowMetaInterface rowMeta, Object[] row ) throws KettleStepException {
     try {
       if ( meta.getDataTypeId() == SnowflakeBulkLoaderMeta.DATA_TYPE_CSV && !meta.isSpecifyFields() ) {
         /*
@@ -251,7 +280,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
             data.writer.write( data.binarySeparator );
           }
           ValueMetaInterface v = rowMeta.getValueMeta( i );
-          Object valueData = r[i];
+          Object valueData = row[i];
 
           // no special null value default was specified since no fields are specified at all
           // As such, we pass null
@@ -295,7 +324,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
             }
             Object valueData = null;
             if ( fieldIndex >= 0 ) {
-              valueData = v.convertData( rowMeta.getValueMeta( fieldIndex ), r[fieldIndex] );
+              valueData = v.convertData( rowMeta.getValueMeta( fieldIndex ), row[fieldIndex] );
             } else if ( meta.isErrorColumnMismatch() ) {
               throw new KettleException( "Error column mismatch: Database field " + data.dbFields.get( i )[0] + " not found on stream." );
             }
@@ -305,7 +334,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         data.writer.write( data.binaryNewline );
       } else {
         int jsonField = data.fieldnrs.get( "json" );
-        data.writer.write( data.outputRowMeta.getString( r, jsonField ).getBytes() );
+        data.writer.write( data.outputRowMeta.getString( row, jsonField ).getBytes() );
         data.writer.write( data.binaryNewline );
       }
 
@@ -318,6 +347,13 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     }
   }
 
+  /**
+   * Takes an input field and converts it to bytes to be stored in the temp file.
+   * @param v The metadata about the column
+   * @param valueData The column data
+   * @return The bytes for the value
+   * @throws KettleValueException
+   */
   private byte[] formatField( ValueMetaInterface v, Object valueData ) throws KettleValueException {
     if ( v.isString() ) {
       if ( v.isStorageBinaryString() && v.getTrimType() == ValueMetaInterface.TRIM_TYPE_NONE && v.getLength() < 0
@@ -335,6 +371,13 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     }
   }
 
+  /**
+   * Converts an input string to the bytes for the string
+   * @param v The metadata about the column
+   * @param string The column data
+   * @return The bytes for the value
+   * @throws KettleValueException
+   */
   private byte[] convertStringToBinaryString( ValueMetaInterface v, String string ) throws KettleValueException {
     int length = v.getLength();
 
@@ -398,14 +441,13 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     }
   }
 
-/*  private byte[] getBinaryString( String string ) throws KettleStepException {
-    try {
-      return string.getBytes( "UTF-8" );
-    } catch ( Exception e ) {
-      throw new KettleStepException( e );
-    }
-  } */
-
+  /**
+   * Writes an individual field to the temp file.
+   * @param v The metadata about the column
+   * @param valueData The data for the column
+   * @param nullString The bytes to put in the temp file if the value is null
+   * @throws KettleStepException
+   */
   private void writeField( ValueMetaInterface v, Object valueData, byte[] nullString ) throws KettleStepException {
     try {
       byte[] str;
@@ -463,6 +505,11 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     }
   }
 
+  /**
+   * Gets the positions of any double quotes or backslashes in the string
+   * @param str The string to check
+   * @return The positions within the string of double quotes and backslashes.
+   */
   private List<Integer> getEnclosurePositions( byte[] str ) {
     List<Integer> positions = null;
     // +1 because otherwise we will not find it at the end
@@ -495,10 +542,19 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     return positions;
   }
 
+  /**
+   * Get the filename to wrtie
+   * @return The filename to use
+   */
   private String buildFilename() {
     return meta.buildFilename( this, getCopy(), getPartitionID(), data.splitnr );
   }
 
+  /**
+   * Opens a file for writing
+   * @param baseFilename The filename to write to
+   * @throws KettleException
+   */
   private void openNewFile( String baseFilename ) throws KettleException {
     if ( baseFilename == null ) {
       throw new KettleFileException( BaseMessages.getString( PKG, "SnowflakeBulkLoader.Exception.FileNameNotSet" ) );
@@ -553,6 +609,10 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
 
   }
 
+  /**
+   * Closes a file so that its file handle is no longer open
+   * @return true if we successfully closed the file
+   */
   private boolean closeFile() {
     boolean returnValue = false;
 
@@ -581,12 +641,23 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     return returnValue;
   }
 
+  /**
+   * Checks if a filename was previously opened by the step
+   * @param filename The filename to check
+   * @return True if the step had previously opened the file
+   */
   private boolean checkPreviouslyOpened( String filename ) {
 
     return data.getPreviouslyOpenedFiles().contains( filename );
 
   }
 
+  /**
+   * Initialize the step by connecting to the database and calculating some constants that will be used.
+   * @param smi The step meta
+   * @param sdi The step data
+   * @return True if successfully initialized
+   */
   public boolean init( StepMetaInterface smi, StepDataInterface sdi ) {
     meta = (SnowflakeBulkLoaderMeta) smi;
     data = (SnowflakeBulkLoaderData) sdi;
@@ -623,6 +694,10 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     return false;
   }
 
+  /**
+   * Initialize the binary values of delimiters, enclosures, and escape characters
+   * @throws KettleException
+   */
   private void initBinaryDataFields() throws KettleException {
     try {
       data.binarySeparator = new byte[]{};
@@ -641,6 +716,11 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     }
   }
 
+  /**
+   * Clean up after the step.  Close any open files, remove temp files, close any database connections.
+   * @param smi The step metadata
+   * @param sdi The step data
+   */
   public void dispose( StepMetaInterface smi, StepDataInterface sdi ) {
     meta = (SnowflakeBulkLoaderMeta) smi;
     data = (SnowflakeBulkLoaderData) sdi;
@@ -679,6 +759,15 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     super.dispose( smi, sdi );
   }
 
+  /**
+   * Check if a string contains separators or enclosures.  Can be used to determine if the string
+   * needs enclosures around it or not.
+   * @param source The string to check
+   * @param separator The separator character(s)
+   * @param enclosure The enclosure character(s)
+   * @param escape The escape character(s)
+   * @return True if the string contains separators or enclosures
+   */
   @SuppressWarnings( "Duplicates" )
   private boolean containsSeparatorOrEnclosure( byte[] source, byte[] separator, byte[] enclosure, byte[] escape ) {
     boolean result = false;
@@ -746,16 +835,37 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
   }
 
 
+  /**
+   * Gets a file handle
+   * @param vfsFilename The file name
+   * @return The file handle
+   * @throws KettleFileException
+   */
   @SuppressWarnings( "unused" )
   protected FileObject getFileObject( String vfsFilename ) throws KettleFileException {
     return KettleVFS.getFileObject( vfsFilename );
   }
 
+  /**
+   * Gets a file handle
+   * @param vfsFilename The file name
+   * @param space The variable space
+   * @returnThe file handle
+   * @throws KettleFileException
+   */
   @SuppressWarnings( "unused" )
   protected FileObject getFileObject( String vfsFilename, VariableSpace space ) throws KettleFileException {
     return KettleVFS.getFileObject( vfsFilename, space );
   }
 
+  /**
+   * Gets the output stream to write to
+   * @param vfsFilename The file name
+   * @param space The variable space
+   * @param append Should the file be appended
+   * @return The output stream to write to
+   * @throws KettleFileException
+   */
   private OutputStream getOutputStream( String vfsFilename, VariableSpace space, boolean append ) throws
     KettleFileException {
     return KettleVFS.getOutputStream( vfsFilename, space, append );
