@@ -2,7 +2,7 @@
 
 This plugin was built as a collaboration between [Inquidia Consulting](http://inquidia.com) and [Snowflake Computing](http://snowflake.net).
 
-The Snowflake Plugin for Pentaho Data Integration (PDI) includes the Snowflake database type and a bulk loader step to improve performance when loading a Snowflake database.
+The Snowflake Plugin for Pentaho Data Integration (PDI) includes the Snowflake database type and a bulk loader step to improve performance when loading a Snowflake database and a utility job entry to aid in resuming, suspending, and re-sizing warehouses.
 
 ## Snowflake Database Type
 
@@ -60,6 +60,64 @@ The Snowflake Bulk Loader step utilizes the Snowflake Copy command to load data 
      * **Enter field mapping button**: Opens a window to help users specify the mapping of input fields to table fields.
  - **Data type JSON**
    * **JSON field**: The field on the input stream containing the JSON data to be loaded.
+
+## Snowflake Warehouse Manager
+
+The Snowflake Warehouse Manager job entry provides functionality to create, drop, resume, suspend, and alter warehouses.  This allows the ETL process to resume a warehouse before loading, and then suspend the warehouse as soon as it is done, along with resizing warehouses for portions of the load that may require more processing power.
+
+### Options
+
+ - **Connection**: The connection to the Snowflake database to use
+ - **Warehouse name**: The name of the warehouse
+ - **Action**: (Create, Drop, Resume, Suspend, Alter) What is the action you wish to take against the warehouse.
+
+#### Action: Create warehouse
+
+This action creates a new warehouse using the settings you provide.
+
+ - **Replace?**: If the warehouse already exists, replace the existing warehouse with your new settings.
+ - **Fail if warehouse exists?**: If the warehouse already exists the job entry will fail.  If not checked and Replace? is not checked the job entry will perform no action if the warehouse already exists.
+ - **Warehouse Size**: (X-Small, Small, Medium, Large, X-Large, 2X-Large, 3X-Large) The size of the warehouse to create.
+ - **Warehouse Type**: (Standard, Enterprise) The type of warehouse to create.  Enterprise warehouses have more memory available than Standard warehouses.
+ - **Max cluster size**: The maximum cluster size for clustered warehouses.
+ - **Min cluster size**: The minimum cluster size for clustered warehouses.
+ - **Auto suspend**: The number of minutes of inactivity after which the warehouse will automatically suspend.
+ - **Auto resume?**: Should the warehouse automatically resume when queries are run against it?
+ - **Initially suspended?**: Should the warehouse be created in a suspended state.
+ - **Resource monitor**: The resource monitor used for tracking Snowflake usage and billing.
+ - **Comment**: A comment to be included about the warehouse.
+
+#### Action: Drop warehouse
+
+This action removes a warehouse from Snowflake.
+
+ - **Fail if warehouse does not exist?**: If the warehouse does not exist, the job entry will fail.
+
+#### Action: Resume warehouse
+
+This action resumes a warehouse in Snowflake.  The warehouse must be in a suspended state prior to this job entry, or the job entry will fail.
+
+ - **Fail if warehouse does not exist?**: If the warehouse does not exist, the job entry will fail.
+
+#### Action: Suspend warehouse
+
+This action suspends a warehouse in Snowflake.  The warehouse must be in a started state prior to this job entry, or the job entry will fail.
+
+ - **Fail if warehouse does not exist?**: If the warehouse does not exist, the job entry will fail.
+
+#### Action: Alter warehouse
+
+This action alters the warehouse, enabling users to re-size, change warehouse types, change auto-suspend settings, etc.
+
+ - **Fail if warehouse does not exist?**: If the warehouse does not exist, the job entry will fail.
+ - **Warehouse Size**: (X-Small, Small, Medium, Large, X-Large, 2X-Large, 3X-Large) The size of the warehouse to create.
+ - **Warehouse Type**: (Standard, Enterprise) The type of warehouse to create.  Enterprise warehouses have more memory available than Standard warehouses.
+ - **Max cluster size**: The maximum cluster size for clustered warehouses.
+ - **Min cluster size**: The minimum cluster size for clustered warehouses.
+ - **Auto suspend**: The number of minutes of inactivity after which the warehouse will automatically suspend.
+ - **Auto resume?**: Should the warehouse automatically resume when queries are run against it?
+ - **Resource monitor**: The resource monitor used for tracking Snowflake usage and billing.
+ - **Comment**: A comment to be included about the warehouse.
 
 ## Contributing
 

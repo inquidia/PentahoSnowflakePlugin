@@ -60,7 +60,7 @@ import java.util.List;
 @Step( id = "SnowflakeBulkLoader", image = "SBL.svg", name = "Step.Name", description = "Step.Description",
   categoryDescription = "Category.Description",
   i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
-  documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Parquet-Output",
+  documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Bulk-Loader",
   casesUrl = "https://github.com/inquidia/SnowflakePlugin/issues",
   isSeparateClassLoaderNeeded = true )
 public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface {

@@ -58,10 +58,10 @@ import static org.pentaho.di.job.entry.validator.JobEntryValidatorUtils.notBlank
  * @since 2016-06-08
  */
 @SuppressWarnings( { "WeakerAccess", "unused" } )
-@JobEntry( id = "SnowflakeWarehouseManager", image = "SBL.svg", name = "JobEntry.Name",
+@JobEntry( id = "SnowflakeWarehouseManager", image = "SWM.svg", name = "JobEntry.Name",
   description = "JobEntry.Description", categoryDescription = "Category.Description",
   i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.warehousemanager",
-  documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Parquet-Output",
+  documentationUrl = "https://github.com/inquidia/PentahoSnowflakePlugin/wiki/Warehouse-Manager",
   casesUrl = "https://github.com/inquidia/SnowflakePlugin/issues" )
 public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntryInterface {
   public static final String MANAGEMENT_ACTION = "managementAction";
@@ -81,9 +81,13 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
   /**
    * The type of management actions this step supports
    */
-  private static final String[] MANAGEMENT_ACTIONS = { "create", "drop" };
+  private static final String[] MANAGEMENT_ACTIONS = { "create", "drop", "resume", "suspend", "alter" };
   public static final int MANAGEMENT_ACTION_CREATE = 0;
   public static final int MANAGEMENT_ACTION_DROP = 1;
+  public static final int MANAGEMENT_ACTION_RESUME = 2;
+  public static final int MANAGEMENT_ACTION_SUSPEND = 3;
+  public static final int MANAGEMENT_ACTION_ALTER = 4;
+
   /**
    * The valid warehouse sizes
    */
@@ -409,7 +413,7 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
       setInitiallySuspended( "Y".equalsIgnoreCase( XMLHandler.getTagValue( entryNode, INITIALLY_SUSPENDED ) ) );
       setResourceMonitor( XMLHandler.getTagValue( entryNode, RESOURCE_MONITOR ) );
       setComment( XMLHandler.getTagValue( entryNode, COMMENT ) );
-      setFailIfNotExists( "Y".equalsIgnoreCase( XMLHandler.getTagAttribute( entryNode, FAIL_IF_NOT_EXISTS ) ) );
+      setFailIfNotExists( "Y".equalsIgnoreCase( XMLHandler.getTagValue( entryNode, FAIL_IF_NOT_EXISTS ) ) );
     } catch ( KettleXMLException dbe ) {
       throw new KettleXMLException( BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Error.Exception.UnableLoadXML" ), dbe );
     }
@@ -488,7 +492,7 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
 
   public boolean validate() throws KettleException {
     boolean result = true;
-    if ( databaseMeta != null && !Const.isEmpty( databaseMeta.getName() ) ) {
+    if ( databaseMeta == null || Const.isEmpty( databaseMeta.getName() ) ) {
       logError( BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Validate.DatabaseIsEmpty" ) );
       result = false;
     } else if ( Const.isEmpty( managementAction ) ) {
@@ -508,6 +512,14 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
 
         logError( BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Validate.MinClusterCount",
           environmentSubstitute( minClusterCount ) ) );
+        return false;
+      }
+
+      if ( !Const.isEmpty( environmentSubstitute( autoSuspend ) )
+        && Const.toInt( environmentSubstitute( autoSuspend ), -1 ) < 0 ) {
+        logError( BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Validate.AutoSuspend",
+          environmentSubstitute( autoSuspend ) ) );
+        return false;
       }
     }
     return result;
@@ -525,11 +537,23 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
     try {
       db = new Database( this, databaseMeta );
       String SQL = null;
+      String successMessage = null;
 
       if ( managementAction.equals( MANAGEMENT_ACTIONS[MANAGEMENT_ACTION_CREATE] ) ) {
         SQL = getCreateSQL();
+        successMessage = BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Log.Create.Success" );
       } else if ( managementAction.equals( MANAGEMENT_ACTIONS[MANAGEMENT_ACTION_DROP] ) ) {
         SQL = getDropSQL();
+        successMessage = BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Log.Drop.Success" );
+      } else if ( managementAction.equals( MANAGEMENT_ACTIONS[MANAGEMENT_ACTION_RESUME] ) ) {
+        SQL = getResumeSQL();
+        successMessage = BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Log.Resume.Success" );
+      } else if ( managementAction.equals( MANAGEMENT_ACTIONS[MANAGEMENT_ACTION_SUSPEND] ) ) {
+        SQL = getSuspendSQL();
+        successMessage = BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Log.Suspend.Success" );
+      } else if ( managementAction.equals( MANAGEMENT_ACTIONS[MANAGEMENT_ACTION_ALTER] ) ) {
+        SQL = getAlterSQL();
+        successMessage = BaseMessages.getString( PKG, "SnowflakeWarehouseManager.Log.Alter.Success" );
       }
 
       if ( SQL == null ) {
@@ -537,8 +561,13 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
       }
 
       db.connect();
+      logDebug( "Executing SQL " + SQL );
       db.execStatements( SQL );
+      logBasic( successMessage );
 
+    } catch( Exception ex ) {
+      logError( "Error managing warehouse", ex );
+      result.setResult( false );
     } finally {
       try {
         if ( db != null ) {
@@ -560,6 +589,26 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
       sql.append( "IF EXISTS " );
     }
     sql.append( environmentSubstitute( warehouseName ) ).append( ";\ncommit;" );
+    return sql.toString();
+  }
+
+  private String getResumeSQL() {
+    StringBuilder sql = new StringBuilder();
+    sql.append( "ALTER WAREHOUSE " );
+    if ( !failIfNotExists ) {
+      sql.append( "IF EXISTS " );
+    }
+    sql.append( environmentSubstitute( warehouseName ) ).append( " RESUME;\ncommit;" );
+    return sql.toString();
+  }
+
+  private String getSuspendSQL() {
+    StringBuilder sql = new StringBuilder();
+    sql.append( "ALTER WAREHOUSE " );
+    if ( !failIfNotExists ) {
+      sql.append( "IF EXISTS " );
+    }
+    sql.append( environmentSubstitute( warehouseName ) ).append( " SUSPEND;\ncommit;" );
     return sql.toString();
   }
 
@@ -592,11 +641,53 @@ public class WarehouseManager extends JobEntryBase implements Cloneable, JobEntr
     }
 
     if ( !Const.isEmpty( environmentSubstitute( autoSuspend ) ) ) {
-      sql.append( "AUTO_SUSPEND = " ).append( environmentSubstitute( autoSuspend ) ).append( " " );
+      sql.append( "AUTO_SUSPEND = " ).append( Const.toInt( environmentSubstitute( autoSuspend ), 0 ) * 60 ).append( " " );
     }
 
     sql.append( "AUTO_RESUME = " ).append( autoResume ).append( " " );
     sql.append( "INITIALLY_SUSPENDED = " ).append( initiallySuspended ).append( " " );
+
+    if ( !Const.isEmpty( environmentSubstitute( resourceMonitor ) ) ) {
+      sql.append( "RESOURCE_MONITOR = '" ).append( environmentSubstitute( resourceMonitor ) ).append( "' " );
+    }
+
+    if ( !Const.isEmpty( environmentSubstitute( comment ) ) ) {
+      sql.append( "COMMENT = \"" ).append( comment.replaceAll( "\"", "\"\"" ) ).append( "\" " );
+    }
+
+    sql.append( ";\ncommit;" );
+    return sql.toString();
+  }
+
+  private String getAlterSQL() {
+    StringBuilder sql = new StringBuilder();
+    sql.append( "ALTER WAREHOUSE " );
+    if ( !failIfNotExists ) {
+      sql.append( "IF EXISTS " );
+    }
+    sql.append( warehouseName ).append( " SET " );
+
+    if ( !Const.isEmpty( environmentSubstitute( warehouseSize ) ) ) {
+      sql.append( "WAREHOUSE_SIZE = '" ).append( environmentSubstitute( warehouseSize ) ).append( "' " );
+    }
+
+    if ( !Const.isEmpty( environmentSubstitute( warehouseType ) ) ) {
+      sql.append( "WAREHOUSE_TYPE = " ).append( environmentSubstitute( warehouseType ) ).append( " " );
+    }
+
+    if ( !Const.isEmpty( environmentSubstitute( maxClusterCount ) ) ) {
+      sql.append( "MAX_CLUSTER_COUNT = " ).append( environmentSubstitute( maxClusterCount ) ).append( " " );
+    }
+
+    if ( !Const.isEmpty( environmentSubstitute( minClusterCount ) ) ) {
+      sql.append( "MIN_CLUSTER_COUNT = " ).append( environmentSubstitute( minClusterCount ) ).append( " " );
+    }
+
+    if ( !Const.isEmpty( environmentSubstitute( autoSuspend ) ) ) {
+      sql.append( "AUTO_SUSPEND = " ).append( Const.toInt( environmentSubstitute( autoSuspend ), 0 ) * 60 ).append( " " );
+    }
+
+    sql.append( "AUTO_RESUME = " ).append( autoResume ).append( " " );
 
     if ( !Const.isEmpty( environmentSubstitute( resourceMonitor ) ) ) {
       sql.append( "RESOURCE_MONITOR = '" ).append( environmentSubstitute( resourceMonitor ) ).append( "' " );
