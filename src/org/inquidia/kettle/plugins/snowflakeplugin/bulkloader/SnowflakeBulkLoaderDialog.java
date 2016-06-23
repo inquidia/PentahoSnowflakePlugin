@@ -93,7 +93,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
   private static final String[] LOCATION_TYPE_COMBO = new String[] {
     BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.LocationType.User" ),
     BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.LocationType.Table" ),
-    BaseMessages.getString( PKG, "Snowflake BulkLoad.Dialog.LocationType.InternalStage" ) };
+    BaseMessages.getString( PKG, "SnowflakeBulkLoad.Dialog.LocationType.InternalStage" ) };
 
   /**
    * The descriptions for the on error drop down
@@ -1422,7 +1422,7 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
     } catch ( KettleException ke ) {
       new ErrorDialog(
               shell, BaseMessages.getString( PKG, "SnowflakeBulkLoader.Dialog.FailedToGetFields.DialogTitle" ), BaseMessages
-              .getString( PKG, "SnowflakeBulkLoader.Dialot.FailedToGetFields.DialogMessage" ), ke );
+              .getString( PKG, "SnowflakeBulkLoader.Dialog.FailedToGetFields.DialogMessage" ), ke );
     }
 
   }
