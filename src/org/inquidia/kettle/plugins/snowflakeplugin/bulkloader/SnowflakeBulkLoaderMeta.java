@@ -29,6 +29,7 @@ import org.pentaho.di.core.exception.KettleFileException;
 import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.injection.Injection;
 import org.pentaho.di.core.injection.InjectionDeep;
+import org.pentaho.di.core.injection.InjectionSupported;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.vfs.KettleVFS;
@@ -63,6 +64,7 @@ import java.util.List;
   documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Bulk-Loader",
   casesUrl = "https://github.com/inquidia/SnowflakePlugin/issues",
   isSeparateClassLoaderNeeded = true )
+@InjectionSupported( localizationPrefix = "SnowflakeBulkLoader.Injection.", groups = { "OUTPUT_FIELDS" } )
 public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface {
   private static Class<?> PKG = SnowflakeBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
   /*
