@@ -122,7 +122,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
               + "] couldn't be found in the table!" );
           }
 
-          data.fieldnrs.put( meta.getSnowflakeBulkLoaderFields()[i].getTableField(), streamFieldLocation );
+          data.fieldnrs.put( meta.getSnowflakeBulkLoaderFields()[i].getTableField().toUpperCase(), streamFieldLocation );
         }
       } else if ( meta.getDataType().equals(
         SnowflakeBulkLoaderMeta.DATA_TYPE_CODES[SnowflakeBulkLoaderMeta.DATA_TYPE_JSON] ) ) {
@@ -197,7 +197,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
       }
       while ( row != null ) {
         String[] field = new String[2];
-        field[0] = rowMeta.getString( row, nameField );
+        field[0] = rowMeta.getString( row, nameField ).toUpperCase();
         field[1] = rowMeta.getString( row, typeField );
         data.dbFields.add( field );
         row = data.db.getRow( resultSet );
