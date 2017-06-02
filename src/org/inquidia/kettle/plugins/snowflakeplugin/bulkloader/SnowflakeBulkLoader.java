@@ -224,7 +224,26 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
       + meta.getFileDate() + "_*' " + meta.getStage( this ) + ";";
 
     logDebug( "Executing SQL " + SQL );
-    data.db.execStatement( SQL );
+    ResultSet putResultSet = data.db.openQuery( SQL, null, null, ResultSet.FETCH_FORWARD, false );
+    RowMetaInterface putRowMeta = data.db.getReturnRowMeta();
+    Object[] putRow = data.db.getRow( putResultSet );
+    logDebug( "=========================Put File Results======================" );
+    int fileNum = 0;
+    while ( putRow != null ) {
+      logDebug( "------------------------ File " + fileNum +"--------------------------" );
+      for ( int i = 0; i < putRowMeta.getFieldNames().length; i++ ) {
+        logDebug( putRowMeta.getFieldNames()[i] + " = " + putRowMeta.getString( putRow, i ) );
+        if( putRowMeta.getFieldNames()[i].equalsIgnoreCase( "status" ) ) {
+          if( putRowMeta.getString( putRow, i ).equalsIgnoreCase( "ERROR" ) ) {
+            throw new KettleDatabaseException( "Error putting file to Snowflake stage \n" + putRowMeta.getString( putRow, "message", "" ) );
+          }
+        }
+      }
+      fileNum++;
+
+      putRow = data.db.getRow( putResultSet );
+    }
+    data.db.closeQuery( putResultSet );
 
     String copySQL = meta.getCopyStatement( this, data.getPreviouslyOpenedFiles() );
     logDebug( "Executing SQL " + copySQL );
@@ -747,12 +766,14 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
       setErrors( 1 );
     }
 
-    for ( String filename : data.previouslyOpenedFiles ) {
-      try {
-        KettleVFS.getFileObject( filename ).delete();
-        logDetailed( "Deleted temp file " + filename );
-      } catch ( Exception ex ) {
-        logMinimal( "Unable to delete temp file", ex );
+    if( ! Boolean.parseBoolean( environmentSubstitute( SnowflakeBulkLoaderMeta.DEBUG_MODE_VAR ) ) ) {
+      for (String filename : data.previouslyOpenedFiles) {
+        try {
+          KettleVFS.getFileObject(filename).delete();
+          logDetailed("Deleted temp file " + filename);
+        } catch (Exception ex) {
+          logMinimal("Unable to delete temp file", ex);
+        }
       }
     }
 
@@ -850,7 +871,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
    * Gets a file handle
    * @param vfsFilename The file name
    * @param space The variable space
-   * @returnThe file handle
+   * @return The file handle
    * @throws KettleFileException
    */
   @SuppressWarnings( "unused" )

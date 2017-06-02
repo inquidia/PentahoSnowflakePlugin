@@ -67,6 +67,8 @@ import java.util.List;
 @InjectionSupported( localizationPrefix = "SnowflakeBulkLoader.Injection.", groups = { "OUTPUT_FIELDS" } )
 public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface {
   private static Class<?> PKG = SnowflakeBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
+
+  protected static final String DEBUG_MODE_VAR = "${SNOWFLAKE_DEBUG_MODE}";
   /*
    * Static constants for the identifiers used when saving the step to XML or the repository
    */
@@ -1319,7 +1321,9 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
       }
     }
 
-    returnValue.append( "PURGE = " ).append( removeFiles ).append( " " );
+    if( ! Boolean.getBoolean( space.environmentSubstitute( DEBUG_MODE_VAR ) ) ) {
+      returnValue.append("PURGE = ").append(removeFiles).append(" ");
+    }
 
     returnValue.append( ";" );
 
