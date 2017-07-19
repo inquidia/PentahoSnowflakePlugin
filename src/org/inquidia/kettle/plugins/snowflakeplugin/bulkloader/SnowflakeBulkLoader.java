@@ -32,6 +32,7 @@ import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.core.row.value.ValueMetaBigNumber;
 import org.pentaho.di.core.row.value.ValueMetaDate;
 import org.pentaho.di.core.row.value.ValueMetaNumber;
 import org.pentaho.di.core.row.value.ValueMetaString;
@@ -330,8 +331,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
               v = new ValueMetaDate();
               v.setConversionMask( "HH:mm:ss.SSS" );
             } else if ( field[1].toUpperCase().startsWith( "NUMBER" ) || field[1].toUpperCase().startsWith( "FLOAT" ) ) {
-              v = new ValueMetaNumber();
-              v.setConversionMask( "#.#" );
+              v = new ValueMetaBigNumber();
             } else {
               v = new ValueMetaString();
               v.setLength( -1 );
