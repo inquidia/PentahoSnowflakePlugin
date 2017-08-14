@@ -353,7 +353,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         data.writer.write( data.binaryNewline );
       } else {
         int jsonField = data.fieldnrs.get( "json" );
-        data.writer.write( data.outputRowMeta.getString( row, jsonField ).getBytes() );
+        data.writer.write( data.outputRowMeta.getString( row, jsonField ).getBytes( "UTF-8" ) );
         data.writer.write( data.binaryNewline );
       }
 
@@ -407,28 +407,21 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     if ( length > -1 && length < string.length() ) {
       // we need to truncate
       String tmp = string.substring( 0, length );
-      if ( Const.isEmpty( v.getStringEncoding() ) ) {
-        return tmp.getBytes();
-      } else {
-        try {
-          return tmp.getBytes( v.getStringEncoding() );
-        } catch ( UnsupportedEncodingException e ) {
-          throw new KettleValueException( "Unable to convert String to Binary with specified string encoding ["
+      try {
+        return tmp.getBytes( "UTF-8" );
+      } catch ( UnsupportedEncodingException e ) {
+        throw new KettleValueException( "Unable to convert String to Binary with specified string encoding ["
             + v.getStringEncoding() + "]", e );
-        }
       }
     } else {
       byte[] text;
-      if ( Const.isEmpty( v.getStringEncoding() ) ) {
-        text = string.getBytes();
-      } else {
-        try {
-          text = string.getBytes( v.getStringEncoding() );
-        } catch ( UnsupportedEncodingException e ) {
-          throw new KettleValueException( "Unable to convert String to Binary with specified string encoding ["
-            + v.getStringEncoding() + "]", e );
-        }
+      try {
+        text = string.getBytes( "UTF-8" );
+      } catch ( UnsupportedEncodingException e ) {
+        throw new KettleValueException( "Unable to convert String to Binary with specified string encoding ["
+          + v.getStringEncoding() + "]", e );
       }
+
       if ( length > string.length() ) {
         // we need to pad this
 
@@ -729,7 +722,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
       data.binaryNewline = SnowflakeBulkLoaderMeta.CSV_RECORD_DELIMITER.getBytes( "UTF-8" );
       data.escapeCharacters = SnowflakeBulkLoaderMeta.CSV_ESCAPE_CHAR.getBytes( "UTF-8" );
 
-      data.binaryNullValue = "".getBytes();
+      data.binaryNullValue = "".getBytes( "UTF-8" );
     } catch ( Exception e ) {
       throw new KettleException( "Unexpected error while encoding binary fields", e );
     }
