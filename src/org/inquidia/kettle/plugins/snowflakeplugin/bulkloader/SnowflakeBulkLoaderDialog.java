@@ -16,7 +16,7 @@
  *
  ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflake2plugin.bulkloader;
+package org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
 
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.SWT;

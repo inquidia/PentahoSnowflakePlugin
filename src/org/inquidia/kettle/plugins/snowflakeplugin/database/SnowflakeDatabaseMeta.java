@@ -20,7 +20,7 @@
  *
  ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflake2plugin.database;
+package org.inquidia.kettle.plugins.snowflakeplugin.database;
 
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.database.BaseDatabaseMeta;
