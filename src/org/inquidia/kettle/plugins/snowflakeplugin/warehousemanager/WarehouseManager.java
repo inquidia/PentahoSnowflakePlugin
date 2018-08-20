@@ -22,7 +22,7 @@
 *
 ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflakeplugin.warehousemanager;
+package org.inquidia.kettle.plugins.snowflake2plugin.warehousemanager;
 
 import org.pentaho.di.cluster.SlaveServer;
 import org.pentaho.di.core.CheckResultInterface;

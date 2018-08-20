@@ -16,7 +16,7 @@
  *
  ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
+package org.inquidia.kettle.plugins.snowflake2plugin.bulkloader;
 
 import org.pentaho.di.core.CheckResult;
 import org.pentaho.di.core.CheckResultInterface;
@@ -63,7 +63,7 @@ import java.util.List;
   i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
   documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Bulk-Loader",
   casesUrl = "https://github.com/inquidia/SnowflakePlugin/issues",
-  isSeparateClassLoaderNeeded = true )
+  isSeparateClassLoaderNeeded = false )
 @InjectionSupported( localizationPrefix = "SnowflakeBulkLoader.Injection.", groups = { "OUTPUT_FIELDS" } )
 public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface {
   private static Class<?> PKG = SnowflakeBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!

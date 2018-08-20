@@ -18,7 +18,7 @@
  * limitations under the License.
  ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
+package org.inquidia.kettle.plugins.snowflake2plugin.bulkloader;
 
 import org.apache.commons.vfs2.FileObject;
 import org.pentaho.di.core.Const;
@@ -34,7 +34,6 @@ import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.core.row.value.ValueMetaBigNumber;
 import org.pentaho.di.core.row.value.ValueMetaDate;
-import org.pentaho.di.core.row.value.ValueMetaNumber;
 import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.vfs.KettleVFS;

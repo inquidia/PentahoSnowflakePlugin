@@ -16,7 +16,7 @@
  *
  ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
+package org.inquidia.kettle.plugins.snowflake2plugin.bulkloader;
 
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.SWT;
@@ -298,7 +298,6 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
 
   private int margin = Const.MARGIN;
 
-  @SuppressWarnings( "unused" )
   public SnowflakeBulkLoaderDialog( Shell parent, Object in, TransMeta transMeta, String sname ) {
     super( parent, (BaseStepMeta) in, transMeta, sname );
     input = (SnowflakeBulkLoaderMeta) in;
