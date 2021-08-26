@@ -1246,7 +1246,7 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     }
 
     //Table
-    returnValue.append( space.environmentSubstitute( targetTable ) ).append( " " );
+    returnValue.append( space.environmentSubstitute( this.getTargetTable().contains("\"") ? this.getTargetTable() : "\""+this.getTargetTable()+"\"" ) ).append( " " );
 
     // Location
     returnValue.append( "FROM " ).append( getStage( space ) ).append( "/ " );

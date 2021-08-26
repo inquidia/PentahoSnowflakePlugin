@@ -179,7 +179,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     if ( !Const.isEmpty( environmentSubstitute( meta.getTargetSchema() ) ) ) {
       SQL += environmentSubstitute( meta.getTargetSchema() ) + ".";
     }
-    SQL += environmentSubstitute( meta.getTargetTable() );
+    SQL += environmentSubstitute( meta.getTargetTable().contains("\"") ? meta.getTargetTable() : "\""+meta.getTargetTable()+"\"" );
     logDetailed( "Executing SQL " + SQL );
     try {
       ResultSet resultSet = data.db.openQuery( SQL, null, null, ResultSet.FETCH_FORWARD, false );
