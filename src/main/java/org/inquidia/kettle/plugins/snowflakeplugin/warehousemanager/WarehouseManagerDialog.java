@@ -22,7 +22,7 @@
 *
 ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflakeplugin.warehousemanager;
+package main.java.org.inquidia.kettle.plugins.snowflakeplugin.warehousemanager;
 
 
 import org.eclipse.swt.SWT;

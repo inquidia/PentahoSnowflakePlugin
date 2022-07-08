@@ -16,7 +16,7 @@
  *
  ******************************************************************************/
 
-package org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
+package main.java.org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
 
 
 import org.pentaho.di.core.exception.KettleException;
