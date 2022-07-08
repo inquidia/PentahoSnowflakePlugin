@@ -478,8 +478,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         boolean writeEnclosures = false;
 
         if ( v.isString() ) {
-          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure,
-                data.escapeCharacters ) ) {
+          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure, data.escapeCharacters ) ) {
             writeEnclosures = true;
           }
         }
@@ -782,7 +781,6 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
    * @param escape The escape character(s)
    * @return True if the string contains separators or enclosures
    */
-  @SuppressWarnings( "Duplicates" )
   private boolean containsSeparatorOrEnclosure( byte[] source, byte[] separator, byte[] enclosure, byte[] escape ) {
     boolean result = false;
 
