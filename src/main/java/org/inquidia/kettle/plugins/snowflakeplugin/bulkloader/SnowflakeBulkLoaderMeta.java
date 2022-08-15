@@ -60,9 +60,9 @@ import java.util.List;
 @SuppressWarnings( "WeakerAccess" )
 @Step(
         id = "SnowflakeBulkLoader",
-        name = "Snowflake Bulk Loader",
+        name = "Step.Name",
         image = "SBL.svg",
-        description = "This step loads the Snowflake database",
+        description = "Step.Description",
         categoryDescription = "Category.Description",
         i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
         documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Bulk-Loader"
