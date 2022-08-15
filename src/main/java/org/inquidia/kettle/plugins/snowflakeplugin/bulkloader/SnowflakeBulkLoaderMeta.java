@@ -16,7 +16,7 @@
  *
  ******************************************************************************/
 
-package main.java.org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
+package org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
 
 import org.pentaho.di.core.CheckResult;
 import org.pentaho.di.core.CheckResultInterface;
@@ -58,13 +58,18 @@ import java.util.List;
  * and read this metadata in ktr files and on a repository.
  */
 @SuppressWarnings( "WeakerAccess" )
-@Step( id = "SnowflakeBulkLoader", image = "SBL.svg", name = "Step.Name", description = "Step.Description",
-  categoryDescription = "Category.Description",
-  i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
-  documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Bulk-Loader",
-  casesUrl = "https://github.com/inquidia/SnowflakePlugin/issues",
-  isSeparateClassLoaderNeeded = true )
-@InjectionSupported( localizationPrefix = "SnowflakeBulkLoader.Injection.", groups = { "OUTPUT_FIELDS" } )
+@Step(
+        id = "SnowflakeBulkLoader",
+        name = "Snowflake Bulk Loader",
+        image = "SBL.svg",
+        description = "This step loads the Snowflake database",
+        categoryDescription = "Category.Description",
+        i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
+        documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Bulk-Loader"
+//        casesUrl = "https://github.com/inquidia/SnowflakePlugin/issues"
+//        ,isSeparateClassLoaderNeeded = true
+)
+@InjectionSupported( localizationPrefix = "Snowflake Bulk Loader.", groups = { "OUTPUT_FIELDS" } )
 public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface {
   private static Class<?> PKG = SnowflakeBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 

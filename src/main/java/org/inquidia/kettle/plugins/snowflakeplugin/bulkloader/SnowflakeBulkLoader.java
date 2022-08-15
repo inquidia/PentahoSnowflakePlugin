@@ -18,7 +18,7 @@
  * limitations under the License.
  ******************************************************************************/
 
-package main.java.org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
+package org.inquidia.kettle.plugins.snowflakeplugin.bulkloader;
 
 import org.apache.commons.vfs2.FileObject;
 import org.pentaho.di.core.Const;

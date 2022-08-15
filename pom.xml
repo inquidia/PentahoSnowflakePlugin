@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>SnowflakePlugin</name>
-    <url>http://maven.apache.org</url>
+    <url>https://www.bisolutions.ax/</url>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -31,12 +31,17 @@
         <dependency>
             <groupId>pentaho-kettle</groupId>
             <artifactId>kettle-core</artifactId>
-            <version>9.2.0.0-SNAPSHOT</version>
+            <version>9.2.0.0-290</version>
         </dependency>
         <dependency>
             <groupId>pentaho-kettle</groupId>
             <artifactId>kettle-engine</artifactId>
-            <version>7.1-SNAPSHOT</version>
+            <version>9.2.0.0-290</version>
+        </dependency>
+        <dependency>
+            <groupId>pentaho-kettle</groupId>
+            <artifactId>kettle-ui-swt</artifactId>
+            <version>9.2.0.0-290</version>
         </dependency>
         <dependency>
             <groupId>org.eclipse</groupId>
@@ -47,11 +52,6 @@
             <groupId>org.eclipse.swt</groupId>
             <artifactId>org.eclipse.swt.gtk.linux.x86_64</artifactId>
             <version>4.6</version>
-        </dependency>
-        <dependency>
-            <groupId>pentaho-kettle</groupId>
-            <artifactId>kettle-ui-swt</artifactId>
-            <version>7.1-SNAPSHOT</version>
         </dependency>
     </dependencies>
 
