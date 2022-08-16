@@ -478,7 +478,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         boolean writeEnclosures = false;
 
         if ( v.isString() ) {
-          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure, data.escapeCharacters ) ) {
+          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure, data.escapeCharacters, data.binaryNewline) ) {
             writeEnclosures = true;
           }
         }
@@ -761,7 +761,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     if( ! Boolean.parseBoolean( environmentSubstitute( SnowflakeBulkLoaderMeta.DEBUG_MODE_VAR ) ) ) {
       for (String filename : data.previouslyOpenedFiles) {
         try {
-          KettleVFS.getFileObject(filename).delete();
+//          KettleVFS.getFileObject(filename).delete();
           logDetailed("Deleted temp file " + filename);
         } catch (Exception ex) {
           logMinimal("Unable to delete temp file", ex);
@@ -781,69 +781,51 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
    * @param escape The escape character(s)
    * @return True if the string contains separators or enclosures
    */
-  private boolean containsSeparatorOrEnclosure( byte[] source, byte[] separator, byte[] enclosure, byte[] escape ) {
+  public boolean containsSeparatorOrEnclosure( byte[] source, byte[] separator, byte[] enclosure, byte[] escape, byte[] newLine) {
     boolean result = false;
 
     boolean enclosureExists = enclosure != null && enclosure.length > 0;
     boolean separatorExists = separator != null && separator.length > 0;
     boolean escapeExists = escape != null && escape.length > 0;
+    boolean newLineExists = newLine != null && newLine.length > 0;
 
-    // Skip entire test if neither separator nor enclosure exist
-    if ( separatorExists || enclosureExists || escapeExists ) {
+    // Search for the first occurrence of the separator or enclosure
+    for ( int index = 0; !result && index < source.length; index++ ) {
+//        if ( enclosureExists && source[index] == enclosure[0] ) {
+//          // Potential match found, make sure there are enough bytes to support a full match
+//          result = searchForEscapableChar(source, enclosure, result, index);
+//        } else if ( separatorExists && source[index] == separator[0] ) {
+//          // Potential match found, make sure there are enough bytes to support a full match
+//          result = searchForEscapableChar(source, separator, result, index);
+//        } else if ( escapeExists && source[index] == escape[0] ) {
+//          result = searchForEscapableChar(source, escape, result, index);
+//        } else if ( newLineExists && source[index] == escape[0] ) {
+//          // Potential match found, make sure there are enough bytes to support a full match
+//          result = searchForEscapableChar(source, newLine, result, index);
+//        }
+      // Look for char sequences that require the source to be enclosed, quit at the first occurence of a match
+      if(enclosureExists && source[index] == enclosure[0] && searchForEscapableChar(source, enclosure, index)) return true;
+      if(separatorExists && source[index] == separator[0] && searchForEscapableChar(source, separator, index)) return true;
+      if(escapeExists    && source[index] == escape[0]    && searchForEscapableChar(source, escape, index)) return true;
+      if(newLineExists   && source[index] == newLine[0]   && searchForEscapableChar(source, newLine, index)) return true;
+    }
+    return false;
+  }
 
-      // Search for the first occurrence of the separator or enclosure
-      for ( int index = 0; !result && index < source.length; index++ ) {
-        if ( enclosureExists && source[index] == enclosure[0] ) {
-
-          // Potential match found, make sure there are enough bytes to support a full match
-          if ( index + enclosure.length <= source.length ) {
-            // First byte of enclosure found
-            result = true; // Assume match
-            for ( int i = 1; i < enclosure.length; i++ ) {
-              if ( source[index + i] != enclosure[i] ) {
-                // Enclosure match is proven false
-                result = false;
-                break;
-              }
-            }
-          }
-
-        } else if ( separatorExists && source[index] == separator[0] ) {
-
-          // Potential match found, make sure there are enough bytes to support a full match
-          if ( index + separator.length <= source.length ) {
-            // First byte of separator found
-            result = true; // Assume match
-            for ( int i = 1; i < separator.length; i++ ) {
-              if ( source[index + i] != separator[i] ) {
-                // Separator match is proven false
-                result = false;
-                break;
-              }
-            }
-          }
-
-        } else if ( escapeExists && source[index] == escape[0] ) {
-
-          // Potential match found, make sure there are enough bytes to support a full match
-          if ( index + escape.length <= source.length ) {
-            // First byte of separator found
-            result = true; // Assume match
-            for ( int i = 1; i < escape.length; i++ ) {
-              if ( source[index + i] != escape[i] ) {
-                // Separator match is proven false
-                result = false;
-                break;
-              }
-            }
-          }
-
+  public static boolean searchForEscapableChar(byte[] source, byte[] searchBytes, int index) {
+    // Make sure there are enough bytes left in source to support a full match
+    if ( index + searchBytes.length <= source.length ) {
+      // Step through source and look for char sequences that match searchBytes
+      for (int i = 0; i < searchBytes.length; i++ ) {
+        if ( source[index + i] != searchBytes[i] ) {
+          // Separator match is proven false
+          return false;
         }
       }
-
+      return true;
+    } else {
+      return false;
     }
-
-    return result;
   }
 
 
