@@ -16,3 +16,4 @@ target
 bin
 build-res
 dev-lib
+/dependency-reduced-pom.xml
