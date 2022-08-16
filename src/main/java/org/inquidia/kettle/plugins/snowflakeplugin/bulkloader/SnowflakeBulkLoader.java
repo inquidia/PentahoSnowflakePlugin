@@ -34,7 +34,6 @@ import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.core.row.value.ValueMetaBigNumber;
 import org.pentaho.di.core.row.value.ValueMetaDate;
-import org.pentaho.di.core.row.value.ValueMetaNumber;
 import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.vfs.KettleVFS;
@@ -479,7 +478,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         boolean writeEnclosures = false;
 
         if (v.isString()) {
-          writeEnclosures = containsSeparatorOrEnclosure(str, data);
+          writeEnclosures = needEnclosures(str, data);
         }
 
         if ( writeEnclosures ) {
@@ -528,16 +527,18 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
       //
       boolean found = true;
       for ( int x = 0; found && x < data.binaryEnclosure.length; x++ ) {
-        if ( str[i + x] != data.binaryEnclosure[x] ) {
+        if (str[i + x] != data.binaryEnclosure[x]) {
           found = false;
+          break;
         }
       }
 
       if ( !found ) {
         found = true;
         for ( int x = 0; found && x < data.escapeCharacters.length; x++ ) {
-          if ( str[i + x] != data.escapeCharacters[x] ) {
+          if (str[i + x] != data.escapeCharacters[x]) {
             found = false;
+            break;
           }
         }
       }
@@ -778,7 +779,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
    * @param data The data class that contains the strings that need escaping
    * @return True if the string contains separators or enclosures
    */
-  public boolean containsSeparatorOrEnclosure( byte[] source, SnowflakeBulkLoaderData data) {
+  public boolean needEnclosures(byte[] source, SnowflakeBulkLoaderData data) {
     boolean result = false;
 
     boolean enclosureExists = data.binaryEnclosure != null && data.binaryEnclosure.length > 0;
