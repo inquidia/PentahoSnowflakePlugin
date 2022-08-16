@@ -7,6 +7,15 @@
     <version>2.0-SNAPSHOT</version>
     <repositories>
         <repository>
+            <id>central</id>
+            <name>Central Repository</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+            <layout>default</layout>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
             <id>pentaho-releases</id>
             <name>pdi-repo</name>
             <url>https://nexus.pentaho.org/content/groups/omni</url>
