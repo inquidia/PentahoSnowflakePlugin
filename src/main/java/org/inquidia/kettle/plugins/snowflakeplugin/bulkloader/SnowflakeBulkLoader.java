@@ -50,6 +50,7 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 import java.io.BufferedOutputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -477,10 +478,8 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         List<Integer> enclosures = null;
         boolean writeEnclosures = false;
 
-        if ( v.isString() ) {
-          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure, data.escapeCharacters, data.binaryNewline) ) {
-            writeEnclosures = true;
-          }
+        if (v.isString()) {
+          writeEnclosures = containsSeparatorOrEnclosure(str, data);
         }
 
         if ( writeEnclosures ) {
@@ -776,38 +775,25 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
    * Check if a string contains separators or enclosures.  Can be used to determine if the string
    * needs enclosures around it or not.
    * @param source The string to check
-   * @param separator The separator character(s)
-   * @param enclosure The enclosure character(s)
-   * @param escape The escape character(s)
+   * @param data The data class that contains the strings that need escaping
    * @return True if the string contains separators or enclosures
    */
-  public boolean containsSeparatorOrEnclosure( byte[] source, byte[] separator, byte[] enclosure, byte[] escape, byte[] newLine) {
+  public boolean containsSeparatorOrEnclosure( byte[] source, SnowflakeBulkLoaderData data) {
     boolean result = false;
 
-    boolean enclosureExists = enclosure != null && enclosure.length > 0;
-    boolean separatorExists = separator != null && separator.length > 0;
-    boolean escapeExists = escape != null && escape.length > 0;
-    boolean newLineExists = newLine != null && newLine.length > 0;
+    boolean enclosureExists = data.binaryEnclosure != null && data.binaryEnclosure.length > 0;
+    boolean separatorExists = data.binarySeparator != null && data.binarySeparator.length > 0;
+    boolean escapeExists = data.escapeCharacters != null && data.escapeCharacters.length > 0;
+    boolean newLineExists = data.binaryNewline != null && data.binaryNewline.length > 0;
 
     // Search for the first occurrence of the separator or enclosure
     for ( int index = 0; !result && index < source.length; index++ ) {
-//        if ( enclosureExists && source[index] == enclosure[0] ) {
-//          // Potential match found, make sure there are enough bytes to support a full match
-//          result = searchForEscapableChar(source, enclosure, result, index);
-//        } else if ( separatorExists && source[index] == separator[0] ) {
-//          // Potential match found, make sure there are enough bytes to support a full match
-//          result = searchForEscapableChar(source, separator, result, index);
-//        } else if ( escapeExists && source[index] == escape[0] ) {
-//          result = searchForEscapableChar(source, escape, result, index);
-//        } else if ( newLineExists && source[index] == escape[0] ) {
-//          // Potential match found, make sure there are enough bytes to support a full match
-//          result = searchForEscapableChar(source, newLine, result, index);
-//        }
-      // Look for char sequences that require the source to be enclosed, quit at the first occurence of a match
-      if(enclosureExists && source[index] == enclosure[0] && searchForEscapableChar(source, enclosure, index)) return true;
-      if(separatorExists && source[index] == separator[0] && searchForEscapableChar(source, separator, index)) return true;
-      if(escapeExists    && source[index] == escape[0]    && searchForEscapableChar(source, escape, index)) return true;
-      if(newLineExists   && source[index] == newLine[0]   && searchForEscapableChar(source, newLine, index)) return true;
+      // Look for char sequences that require the source to be enclosed, quit at the first occurrence of a match
+      if(enclosureExists && source[index] == data.binaryEnclosure[0] && searchForEscapableChar(source, data.binaryEnclosure, index)) return true;
+      if(separatorExists && source[index] == data.binarySeparator[0] && searchForEscapableChar(source, data.binarySeparator, index)) return true;
+      if(escapeExists    && source[index] == data.escapeCharacters[0]    && searchForEscapableChar(source, data.escapeCharacters, index)) return true;
+      if(newLineExists   && source[index] == data.binaryNewline[0]   && searchForEscapableChar(source, data.binaryNewline, index)) return true;
+      if(source[index] == System.lineSeparator().getBytes(StandardCharsets.UTF_8)[0] && searchForEscapableChar(source, System.lineSeparator().getBytes(StandardCharsets.UTF_8), index)) return true;
     }
     return false;
   }
