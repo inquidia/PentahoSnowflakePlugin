@@ -761,7 +761,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     if( ! Boolean.parseBoolean( environmentSubstitute( SnowflakeBulkLoaderMeta.DEBUG_MODE_VAR ) ) ) {
       for (String filename : data.previouslyOpenedFiles) {
         try {
-//          KettleVFS.getFileObject(filename).delete();
+          KettleVFS.getFileObject(filename).delete();
           logDetailed("Deleted temp file " + filename);
         } catch (Exception ex) {
           logMinimal("Unable to delete temp file", ex);
