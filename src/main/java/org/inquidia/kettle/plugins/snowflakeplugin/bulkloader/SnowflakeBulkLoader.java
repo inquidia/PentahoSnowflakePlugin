@@ -34,7 +34,6 @@ import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.core.row.value.ValueMetaBigNumber;
 import org.pentaho.di.core.row.value.ValueMetaDate;
-import org.pentaho.di.core.row.value.ValueMetaNumber;
 import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.vfs.KettleVFS;
@@ -50,6 +49,7 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 import java.io.BufferedOutputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -477,10 +477,8 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
         List<Integer> enclosures = null;
         boolean writeEnclosures = false;
 
-        if ( v.isString() ) {
-          if ( containsSeparatorOrEnclosure( str, data.binarySeparator, data.binaryEnclosure, data.escapeCharacters ) ) {
-            writeEnclosures = true;
-          }
+        if (v.isString()) {
+          writeEnclosures = needEnclosures(str, data);
         }
 
         if ( writeEnclosures ) {
@@ -529,16 +527,18 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
       //
       boolean found = true;
       for ( int x = 0; found && x < data.binaryEnclosure.length; x++ ) {
-        if ( str[i + x] != data.binaryEnclosure[x] ) {
+        if (str[i + x] != data.binaryEnclosure[x]) {
           found = false;
+          break;
         }
       }
 
       if ( !found ) {
         found = true;
         for ( int x = 0; found && x < data.escapeCharacters.length; x++ ) {
-          if ( str[i + x] != data.escapeCharacters[x] ) {
+          if (str[i + x] != data.escapeCharacters[x]) {
             found = false;
+            break;
           }
         }
       }
@@ -776,74 +776,43 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
    * Check if a string contains separators or enclosures.  Can be used to determine if the string
    * needs enclosures around it or not.
    * @param source The string to check
-   * @param separator The separator character(s)
-   * @param enclosure The enclosure character(s)
-   * @param escape The escape character(s)
+   * @param data The data class that contains the strings that need escaping
    * @return True if the string contains separators or enclosures
    */
-  private boolean containsSeparatorOrEnclosure( byte[] source, byte[] separator, byte[] enclosure, byte[] escape ) {
+  public boolean needEnclosures(byte[] source, SnowflakeBulkLoaderData data) {
     boolean result = false;
 
-    boolean enclosureExists = enclosure != null && enclosure.length > 0;
-    boolean separatorExists = separator != null && separator.length > 0;
-    boolean escapeExists = escape != null && escape.length > 0;
+    boolean enclosureExists = data.binaryEnclosure != null && data.binaryEnclosure.length > 0;
+    boolean separatorExists = data.binarySeparator != null && data.binarySeparator.length > 0;
+    boolean escapeExists = data.escapeCharacters != null && data.escapeCharacters.length > 0;
+    boolean newLineExists = data.binaryNewline != null && data.binaryNewline.length > 0;
 
-    // Skip entire test if neither separator nor enclosure exist
-    if ( separatorExists || enclosureExists || escapeExists ) {
+    // Search for the first occurrence of the separator or enclosure
+    for ( int index = 0; !result && index < source.length; index++ ) {
+      // Look for char sequences that require the source to be enclosed, quit at the first occurrence of a match
+      if(enclosureExists && source[index] == data.binaryEnclosure[0] && searchForEscapableChar(source, data.binaryEnclosure, index)) return true;
+      if(separatorExists && source[index] == data.binarySeparator[0] && searchForEscapableChar(source, data.binarySeparator, index)) return true;
+      if(escapeExists    && source[index] == data.escapeCharacters[0]    && searchForEscapableChar(source, data.escapeCharacters, index)) return true;
+      if(newLineExists   && source[index] == data.binaryNewline[0]   && searchForEscapableChar(source, data.binaryNewline, index)) return true;
+      if(source[index] == System.lineSeparator().getBytes(StandardCharsets.UTF_8)[0] && searchForEscapableChar(source, System.lineSeparator().getBytes(StandardCharsets.UTF_8), index)) return true;
+    }
+    return false;
+  }
 
-      // Search for the first occurrence of the separator or enclosure
-      for ( int index = 0; !result && index < source.length; index++ ) {
-        if ( enclosureExists && source[index] == enclosure[0] ) {
-
-          // Potential match found, make sure there are enough bytes to support a full match
-          if ( index + enclosure.length <= source.length ) {
-            // First byte of enclosure found
-            result = true; // Assume match
-            for ( int i = 1; i < enclosure.length; i++ ) {
-              if ( source[index + i] != enclosure[i] ) {
-                // Enclosure match is proven false
-                result = false;
-                break;
-              }
-            }
-          }
-
-        } else if ( separatorExists && source[index] == separator[0] ) {
-
-          // Potential match found, make sure there are enough bytes to support a full match
-          if ( index + separator.length <= source.length ) {
-            // First byte of separator found
-            result = true; // Assume match
-            for ( int i = 1; i < separator.length; i++ ) {
-              if ( source[index + i] != separator[i] ) {
-                // Separator match is proven false
-                result = false;
-                break;
-              }
-            }
-          }
-
-        } else if ( escapeExists && source[index] == escape[0] ) {
-
-          // Potential match found, make sure there are enough bytes to support a full match
-          if ( index + escape.length <= source.length ) {
-            // First byte of separator found
-            result = true; // Assume match
-            for ( int i = 1; i < escape.length; i++ ) {
-              if ( source[index + i] != escape[i] ) {
-                // Separator match is proven false
-                result = false;
-                break;
-              }
-            }
-          }
-
+  public static boolean searchForEscapableChar(byte[] source, byte[] searchBytes, int index) {
+    // Make sure there are enough bytes left in source to support a full match
+    if ( index + searchBytes.length <= source.length ) {
+      // Step through source and look for char sequences that match searchBytes
+      for (int i = 0; i < searchBytes.length; i++ ) {
+        if ( source[index + i] != searchBytes[i] ) {
+          // Separator match is proven false
+          return false;
         }
       }
-
+      return true;
+    } else {
+      return false;
     }
-
-    return result;
   }
 
 
