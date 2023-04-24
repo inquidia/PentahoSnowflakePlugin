@@ -63,7 +63,7 @@ import java.util.List;
   i18nPackageName = "org.inquidia.kettle.plugins.snowflakeplugin.bulkloader",
   documentationUrl = "https://github.com/inquidia/SnowflakePlugin/wiki/Bulk-Loader",
   casesUrl = "https://github.com/inquidia/SnowflakePlugin/issues",
-  isSeparateClassLoaderNeeded = true )
+  isSeparateClassLoaderNeeded = false )
 @InjectionSupported( localizationPrefix = "SnowflakeBulkLoader.Injection.", groups = { "OUTPUT_FIELDS" } )
 public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface {
   private static Class<?> PKG = SnowflakeBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
@@ -1246,7 +1246,7 @@ public class SnowflakeBulkLoaderMeta extends BaseStepMeta implements StepMetaInt
     }
 
     //Table
-    returnValue.append( space.environmentSubstitute( targetTable ) ).append( " " );
+    returnValue.append( space.environmentSubstitute( this.getTargetTable().contains("\"") ? this.getTargetTable() : "\""+this.getTargetTable()+"\"" ) ).append( " " );
 
     // Location
     returnValue.append( "FROM " ).append( getStage( space ) ).append( "/ " );

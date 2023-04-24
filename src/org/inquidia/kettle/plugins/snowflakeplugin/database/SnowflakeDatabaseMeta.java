@@ -356,7 +356,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    */
   @Override
   public String getStartQuote() {
-    return "'";
+    return "\"";
   }
 
   /**
@@ -366,7 +366,7 @@ public class SnowflakeDatabaseMeta extends BaseDatabaseMeta implements DatabaseI
    */
   @Override
   public String getEndQuote() {
-    return "'";
+    return "\"";
   }
 
   /**

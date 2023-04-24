@@ -34,7 +34,6 @@ import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.core.row.value.ValueMetaBigNumber;
 import org.pentaho.di.core.row.value.ValueMetaDate;
-import org.pentaho.di.core.row.value.ValueMetaNumber;
 import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.vfs.KettleVFS;
@@ -180,7 +179,7 @@ public class SnowflakeBulkLoader extends BaseStep implements StepInterface {
     if ( !Const.isEmpty( environmentSubstitute( meta.getTargetSchema() ) ) ) {
       SQL += environmentSubstitute( meta.getTargetSchema() ) + ".";
     }
-    SQL += environmentSubstitute( meta.getTargetTable() );
+    SQL += environmentSubstitute( meta.getTargetTable().contains("\"") ? meta.getTargetTable() : "\""+meta.getTargetTable()+"\"" );
     logDetailed( "Executing SQL " + SQL );
     try {
       ResultSet resultSet = data.db.openQuery( SQL, null, null, ResultSet.FETCH_FORWARD, false );

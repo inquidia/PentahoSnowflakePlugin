@@ -298,7 +298,6 @@ public class SnowflakeBulkLoaderDialog extends BaseStepDialog implements StepDia
 
   private int margin = Const.MARGIN;
 
-  @SuppressWarnings( "unused" )
   public SnowflakeBulkLoaderDialog( Shell parent, Object in, TransMeta transMeta, String sname ) {
     super( parent, (BaseStepMeta) in, transMeta, sname );
     input = (SnowflakeBulkLoaderMeta) in;
